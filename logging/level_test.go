@@ -3,7 +3,7 @@ package logging_test
 import (
 	"testing"
 
-	"github.com/canonical/go-dqlite/logging"
+	"github.com/cowsql/go-cowsql/logging"
 	"github.com/stretchr/testify/assert"
 )
 

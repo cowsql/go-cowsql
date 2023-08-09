@@ -1,4 +1,4 @@
-module github.com/canonical/go-dqlite
+module github.com/cowsql/go-cowsql
 
 // This is to maintain the ppa package on focal
 go 1.13

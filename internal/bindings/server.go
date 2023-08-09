@@ -9,7 +9,7 @@ package bindings
 #include <signal.h>
 #include <stdbool.h>
 
-#include <dqlite.h>
+#include <cowsql.h>
 
 #define RAFT_NOCONNECTION 16
 
@@ -45,21 +45,21 @@ static int connectTrampoline(void *data, const char *address, int *fd) {
 }
 
 // Configure a custom connect function.
-static int configConnectFunc(dqlite_node *t, uintptr_t handle) {
-        return dqlite_node_set_connect_func(t, connectTrampoline, (void*)handle);
+static int configConnectFunc(cowsql_node *t, uintptr_t handle) {
+        return cowsql_node_set_connect_func(t, connectTrampoline, (void*)handle);
 }
 
-static dqlite_node_info_ext *makeInfos(int n) {
-	return calloc(n, sizeof(dqlite_node_info_ext));
+static cowsql_node_info_ext *makeInfos(int n) {
+	return calloc(n, sizeof(cowsql_node_info_ext));
 }
 
-static void setInfo(dqlite_node_info_ext *infos, unsigned i, dqlite_node_id id,
+static void setInfo(cowsql_node_info_ext *infos, unsigned i, cowsql_node_id id,
 		    const char *address, int role) {
-	dqlite_node_info_ext *info = &infos[i];
-	info->size = sizeof(dqlite_node_info_ext);
+	cowsql_node_info_ext *info = &infos[i];
+	info->size = sizeof(cowsql_node_info_ext);
 	info->id = id;
 	info->address = (uint64_t)(uintptr_t)address;
-	info->dqlite_role = role;
+	info->cowsql_role = role;
 }
 
 */
@@ -73,11 +73,11 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/canonical/go-dqlite/internal/protocol"
+	"github.com/cowsql/go-cowsql/internal/protocol"
 )
 
 type Node struct {
-	node   *C.dqlite_node
+	node   *C.cowsql_node
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -95,16 +95,16 @@ func init() {
 
 // NewNode creates a new Node instance.
 func NewNode(ctx context.Context, id uint64, address string, dir string) (*Node, error) {
-	requiredVersion := dqliteMajorVersion*100 + dqliteMinorVersion
+	requiredVersion := cowsqlMajorVersion*100 + cowsqlMinorVersion
 	// Remove the patch version, as patch versions should be compatible.
-	runtimeVersion := int(C.dqlite_version_number()) / 100
+	runtimeVersion := int(C.cowsql_version_number()) / 100
 	if requiredVersion > runtimeVersion {
 		return nil, fmt.Errorf("version mismatch: required version(%d.%d.x) current version(%d.%d.x)",
-			dqliteMajorVersion, dqliteMinorVersion, runtimeVersion/100, runtimeVersion%100)
+			cowsqlMajorVersion, cowsqlMinorVersion, runtimeVersion/100, runtimeVersion%100)
 	}
 
-	var server *C.dqlite_node
-	cid := C.dqlite_node_id(id)
+	var server *C.cowsql_node
+	cid := C.cowsql_node_id(id)
 
 	caddress := C.CString(address)
 	defer C.free(unsafe.Pointer(caddress))
@@ -112,20 +112,20 @@ func NewNode(ctx context.Context, id uint64, address string, dir string) (*Node,
 	cdir := C.CString(dir)
 	defer C.free(unsafe.Pointer(cdir))
 
-	if rc := C.dqlite_node_create(cid, caddress, cdir, &server); rc != 0 {
-		errmsg := C.GoString(C.dqlite_node_errmsg(server))
-		C.dqlite_node_destroy(server)
+	if rc := C.cowsql_node_create(cid, caddress, cdir, &server); rc != 0 {
+		errmsg := C.GoString(C.cowsql_node_errmsg(server))
+		C.cowsql_node_destroy(server)
 		return nil, fmt.Errorf("%s", errmsg)
 	}
 
-	node := &Node{node: (*C.dqlite_node)(unsafe.Pointer(server))}
+	node := &Node{node: (*C.cowsql_node)(unsafe.Pointer(server))}
 	node.ctx, node.cancel = context.WithCancel(ctx)
 
 	return node, nil
 }
 
 func (s *Node) SetDialFunc(dial protocol.DialFunc) error {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	connectLock.Lock()
 	defer connectLock.Unlock()
 	connectIndex++
@@ -138,76 +138,76 @@ func (s *Node) SetDialFunc(dial protocol.DialFunc) error {
 }
 
 func (s *Node) SetBindAddress(address string) error {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	caddress := C.CString(address)
 	defer C.free(unsafe.Pointer(caddress))
-	if rc := C.dqlite_node_set_bind_address(server, caddress); rc != 0 {
+	if rc := C.cowsql_node_set_bind_address(server, caddress); rc != 0 {
 		return fmt.Errorf("failed to set bind address %q: %d", address, rc)
 	}
 	return nil
 }
 
 func (s *Node) SetNetworkLatency(nanoseconds uint64) error {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	cnanoseconds := C.nanoseconds_t(nanoseconds)
-	if rc := C.dqlite_node_set_network_latency(server, cnanoseconds); rc != 0 {
+	if rc := C.cowsql_node_set_network_latency(server, cnanoseconds); rc != 0 {
 		return fmt.Errorf("failed to set network latency")
 	}
 	return nil
 }
 
 func (s *Node) SetSnapshotParams(params SnapshotParams) error {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	cthreshold := C.unsigned(params.Threshold)
 	ctrailing := C.unsigned(params.Trailing)
-	if rc := C.dqlite_node_set_snapshot_params(server, cthreshold, ctrailing); rc != 0 {
+	if rc := C.cowsql_node_set_snapshot_params(server, cthreshold, ctrailing); rc != 0 {
 		return fmt.Errorf("failed to set snapshot params")
 	}
 	return nil
 }
 
 func (s *Node) SetFailureDomain(code uint64) error {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	ccode := C.failure_domain_t(code)
-	if rc := C.dqlite_node_set_failure_domain(server, ccode); rc != 0 {
+	if rc := C.cowsql_node_set_failure_domain(server, ccode); rc != 0 {
 		return fmt.Errorf("set failure domain: %d", rc)
 	}
 	return nil
 }
 
 func (s *Node) EnableDiskMode() error {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
-	if rc := C.dqlite_node_enable_disk_mode(server); rc != 0 {
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
+	if rc := C.cowsql_node_enable_disk_mode(server); rc != 0 {
 		return fmt.Errorf("failed to set disk mode")
 	}
 	return nil
 }
 
 func (s *Node) SetAutoRecovery(on bool) error {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
-	if rc := C.dqlite_node_set_auto_recovery(server, C.bool(on)); rc != 0 {
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
+	if rc := C.cowsql_node_set_auto_recovery(server, C.bool(on)); rc != 0 {
 		return fmt.Errorf("failed to set auto-recovery behavior")
 	}
 	return nil
 }
 
 func (s *Node) GetBindAddress() string {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
-	return C.GoString(C.dqlite_node_get_bind_address(server))
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
+	return C.GoString(C.cowsql_node_get_bind_address(server))
 }
 
 func (s *Node) Start() error {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
-	if rc := C.dqlite_node_start(server); rc != 0 {
-		errmsg := C.GoString(C.dqlite_node_errmsg(server))
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
+	if rc := C.cowsql_node_start(server); rc != 0 {
+		errmsg := C.GoString(C.cowsql_node_errmsg(server))
 		return fmt.Errorf("%s", errmsg)
 	}
 	return nil
 }
 
 func (s *Node) Stop() error {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
-	if rc := C.dqlite_node_stop(server); rc != 0 {
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
+	if rc := C.cowsql_node_stop(server); rc != 0 {
 		return fmt.Errorf("task stopped with error code %d", rc)
 	}
 	return nil
@@ -216,8 +216,8 @@ func (s *Node) Stop() error {
 // Close the server releasing all used resources.
 func (s *Node) Close() {
 	defer s.cancel()
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
-	C.dqlite_node_destroy(server)
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
+	C.cowsql_node_destroy(server)
 }
 
 // Remark that Recover doesn't take the node role into account
@@ -230,18 +230,18 @@ func (s *Node) Recover(cluster []protocol.NodeInfo) error {
 
 // RecoverExt has a similar purpose as `Recover` but takes the node role into account
 func (s *Node) RecoverExt(cluster []protocol.NodeInfo) error {
-	server := (*C.dqlite_node)(unsafe.Pointer(s.node))
+	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	n := C.int(len(cluster))
 	infos := C.makeInfos(n)
 	defer C.free(unsafe.Pointer(infos))
 	for i, info := range cluster {
-		cid := C.dqlite_node_id(info.ID)
+		cid := C.cowsql_node_id(info.ID)
 		caddress := C.CString(info.Address)
 		crole := C.int(info.Role)
 		defer C.free(unsafe.Pointer(caddress))
 		C.setInfo(infos, C.unsigned(i), cid, caddress, crole)
 	}
-	if rc := C.dqlite_node_recover_ext(server, infos, n); rc != 0 {
+	if rc := C.cowsql_node_recover_ext(server, infos, n); rc != 0 {
 		return fmt.Errorf("recover failed with error code %d", rc)
 	}
 	return nil
@@ -251,7 +251,7 @@ func (s *Node) RecoverExt(cluster []protocol.NodeInfo) error {
 func GenerateID(address string) uint64 {
 	caddress := C.CString(address)
 	defer C.free(unsafe.Pointer(caddress))
-	id := C.dqlite_generate_node_id(caddress)
+	id := C.cowsql_generate_node_id(caddress)
 	return uint64(id)
 }
 

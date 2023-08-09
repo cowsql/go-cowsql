@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	dqlite "github.com/canonical/go-dqlite"
-	"github.com/canonical/go-dqlite/client"
+	cowsql "github.com/cowsql/go-cowsql"
+	"github.com/cowsql/go-cowsql/client"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMembership(t *testing.T) {
 	n := 3
-	nodes := make([]*dqlite.Node, n)
+	nodes := make([]*cowsql.Node, n)
 	infos := make([]client.NodeInfo, n)
 
 	for i := range nodes {
@@ -21,7 +21,7 @@ func TestMembership(t *testing.T) {
 		address := fmt.Sprintf("@test-%d", id)
 		dir, cleanup := newDir(t)
 		defer cleanup()
-		node, err := dqlite.New(id, address, dir, dqlite.WithBindAddress(address))
+		node, err := cowsql.New(id, address, dir, cowsql.WithBindAddress(address))
 		require.NoError(t, err)
 		nodes[i] = node
 		infos[i].ID = id

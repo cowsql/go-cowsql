@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/canonical/go-dqlite/internal/bindings"
-	"github.com/canonical/go-dqlite/internal/protocol"
-	"github.com/canonical/go-dqlite/logging"
+	"github.com/cowsql/go-cowsql/internal/bindings"
+	"github.com/cowsql/go-cowsql/internal/protocol"
+	"github.com/cowsql/go-cowsql/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -352,7 +352,7 @@ func newNode(t *testing.T, index int) (string, func()) {
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "dqlite-connector-test-")
+	dir, err := ioutil.TempDir("", "cowsql-connector-test-")
 	assert.NoError(t, err)
 
 	cleanup := func() {

@@ -9,11 +9,11 @@ import (
 	"github.com/google/renameio"
 	"gopkg.in/yaml.v2"
 
-	"github.com/canonical/go-dqlite/internal/protocol"
+	"github.com/cowsql/go-cowsql/internal/protocol"
 )
 
-// NodeStore is used by a dqlite client to get an initial list of candidate
-// dqlite nodes that it can dial in order to find a leader dqlite node to use.
+// NodeStore is used by a cowsql client to get an initial list of candidate
+// cowsql nodes that it can dial in order to find a leader cowsql node to use.
 type NodeStore = protocol.NodeStore
 
 // NodeRole identifies the role of a node.
@@ -22,13 +22,13 @@ type NodeRole = protocol.NodeRole
 // NodeInfo holds information about a single server.
 type NodeInfo = protocol.NodeInfo
 
-// InmemNodeStore keeps the list of target dqlite nodes in memory.
+// InmemNodeStore keeps the list of target cowsql nodes in memory.
 type InmemNodeStore = protocol.InmemNodeStore
 
 // NewInmemNodeStore creates NodeStore which stores its data in-memory.
 var NewInmemNodeStore = protocol.NewInmemNodeStore
 
-// Persists a list addresses of dqlite nodes in a YAML file.
+// Persists a list addresses of cowsql nodes in a YAML file.
 type YamlNodeStore struct {
 	path    string
 	servers []NodeInfo

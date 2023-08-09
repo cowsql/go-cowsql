@@ -23,10 +23,10 @@ import (
 	"strings"
 	"testing"
 
-	dqlite "github.com/canonical/go-dqlite"
-	"github.com/canonical/go-dqlite/client"
-	dqlitedriver "github.com/canonical/go-dqlite/driver"
-	"github.com/canonical/go-dqlite/logging"
+	cowsql "github.com/cowsql/go-cowsql"
+	"github.com/cowsql/go-cowsql/client"
+	cowsqldriver "github.com/cowsql/go-cowsql/driver"
+	"github.com/cowsql/go-cowsql/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -436,7 +436,7 @@ func TestConn_ExecManyParams(t *testing.T) {
 }
 
 func Test_ColumnTypesEmpty(t *testing.T) {
-	t.Skip("this currently fails if the result set is empty, is dqlite skipping the header if empty set?")
+	t.Skip("this currently fails if the result set is empty, is cowsql skipping the header if empty set?")
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
@@ -583,7 +583,7 @@ func Test_ZeroColumns(t *testing.T) {
 	require.NoError(t, conn.Close())
 }
 
-func newDriver(t *testing.T) (*dqlitedriver.Driver, func()) {
+func newDriver(t *testing.T) (*cowsqldriver.Driver, func()) {
 	t.Helper()
 
 	_, cleanup := newNode(t)
@@ -592,7 +592,7 @@ func newDriver(t *testing.T) (*dqlitedriver.Driver, func()) {
 
 	log := logging.Test(t)
 
-	driver, err := dqlitedriver.New(store, dqlitedriver.WithLogFunc(log))
+	driver, err := cowsqldriver.New(store, cowsqldriver.WithLogFunc(log))
 	require.NoError(t, err)
 
 	return driver, cleanup
@@ -609,11 +609,11 @@ func newStore(t *testing.T, address string) client.NodeStore {
 	return store
 }
 
-func newNode(t *testing.T) (*dqlite.Node, func()) {
+func newNode(t *testing.T) (*cowsql.Node, func()) {
 	t.Helper()
 	dir, dirCleanup := newDir(t)
 
-	server, err := dqlite.New(uint64(1), "@1", dir, dqlite.WithBindAddress("@1"))
+	server, err := cowsql.New(uint64(1), "@1", dir, cowsql.WithBindAddress("@1"))
 	require.NoError(t, err)
 
 	err = server.Start()
@@ -631,7 +631,7 @@ func newNode(t *testing.T) (*dqlite.Node, func()) {
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "dqlite-replication-test-")
+	dir, err := ioutil.TempDir("", "cowsql-replication-test-")
 	assert.NoError(t, err)
 
 	cleanup := func() {

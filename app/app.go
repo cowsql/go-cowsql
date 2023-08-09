@@ -13,10 +13,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/canonical/go-dqlite"
-	"github.com/canonical/go-dqlite/client"
-	"github.com/canonical/go-dqlite/driver"
-	"github.com/canonical/go-dqlite/internal/protocol"
+	"github.com/cowsql/go-cowsql"
+	"github.com/cowsql/go-cowsql/client"
+	"github.com/cowsql/go-cowsql/driver"
+	"github.com/cowsql/go-cowsql/internal/protocol"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/semaphore"
 )
@@ -25,16 +25,16 @@ import (
 // https://pkg.go.dev/sync/atomic#AddInt64
 var driverIndex int64
 
-// App is a high-level helper for initializing a typical dqlite-based Go
+// App is a high-level helper for initializing a typical cowsql-based Go
 // application.
 //
-// It takes care of starting a dqlite node and registering a dqlite Go SQL
+// It takes care of starting a cowsql node and registering a cowsql Go SQL
 // driver.
 type App struct {
 	id              uint64
 	address         string
 	dir             string
-	node            *dqlite.Node
+	node            *cowsql.Node
 	nodeBindAddress string
 	listener        net.Listener
 	tls             *tlsSetup
@@ -96,9 +96,9 @@ func New(dir string, options ...Option) (app *App, err error) {
 			}
 		}
 		if len(o.Cluster) == 0 {
-			info.ID = dqlite.BootstrapID
+			info.ID = cowsql.BootstrapID
 		} else {
-			info.ID = dqlite.GenerateID(o.Address)
+			info.ID = cowsql.GenerateID(o.Address)
 			if err := fileWrite(dir, joinFile, []byte{}); err != nil {
 				return nil, err
 			}
@@ -124,7 +124,7 @@ func New(dir string, options ...Option) (app *App, err error) {
 		return nil, err
 	}
 
-	if info.ID == dqlite.BootstrapID && joinFileExists {
+	if info.ID == cowsql.BootstrapID && joinFileExists {
 		return nil, fmt.Errorf("bootstrap node can't join a cluster")
 	}
 
@@ -149,7 +149,7 @@ func New(dir string, options ...Option) (app *App, err error) {
 		// either with the node's address (for bootstrap nodes) or with
 		// the given cluster addresses (for joining nodes).
 		nodes := []client.NodeInfo{}
-		if info.ID == dqlite.BootstrapID {
+		if info.ID == cowsql.BootstrapID {
 			nodes = append(nodes, client.NodeInfo{Address: info.Address})
 		} else {
 			if len(o.Cluster) == 0 {
@@ -165,20 +165,20 @@ func New(dir string, options ...Option) (app *App, err error) {
 		cleanups = append(cleanups, func() { fileRemove(dir, storeFile) })
 	}
 
-	// Start the local dqlite engine.
+	// Start the local cowsql engine.
 	ctx, stop := context.WithCancel(context.Background())
 	var nodeDial client.DialFunc
 	if o.Conn != nil {
 		nodeDial = extDialFuncWithProxy(ctx, o.Conn.dialFunc)
 	} else if o.TLS != nil {
-		nodeBindAddress = fmt.Sprintf("@dqlite-%d", info.ID)
+		nodeBindAddress = fmt.Sprintf("@cowsql-%d", info.ID)
 
 		// Within a snap we need to choose a different name for the abstract unix domain
 		// socket to get it past the AppArmor confinement.
 		// See https://github.com/snapcore/snapd/blob/master/interfaces/apparmor/template.go#L357
 		snapInstanceName := os.Getenv("SNAP_INSTANCE_NAME")
 		if len(snapInstanceName) > 0 {
-			nodeBindAddress = fmt.Sprintf("@snap.%s.dqlite-%d", snapInstanceName, info.ID)
+			nodeBindAddress = fmt.Sprintf("@snap.%s.cowsql-%d", snapInstanceName, info.ID)
 		}
 
 		nodeDial = makeNodeDialFunc(ctx, o.TLS.Dial)
@@ -186,15 +186,15 @@ func New(dir string, options ...Option) (app *App, err error) {
 		nodeBindAddress = info.Address
 		nodeDial = client.DefaultDialFunc
 	}
-	node, err := dqlite.New(
+	node, err := cowsql.New(
 		info.ID, info.Address, dir,
-		dqlite.WithBindAddress(nodeBindAddress),
-		dqlite.WithDialFunc(nodeDial),
-		dqlite.WithFailureDomain(o.FailureDomain),
-		dqlite.WithNetworkLatency(o.NetworkLatency),
-		dqlite.WithSnapshotParams(o.SnapshotParams),
-		dqlite.WithDiskMode(o.DiskMode),
-		dqlite.WithAutoRecovery(o.AutoRecovery),
+		cowsql.WithBindAddress(nodeBindAddress),
+		cowsql.WithDialFunc(nodeDial),
+		cowsql.WithFailureDomain(o.FailureDomain),
+		cowsql.WithNetworkLatency(o.NetworkLatency),
+		cowsql.WithSnapshotParams(o.SnapshotParams),
+		cowsql.WithDiskMode(o.DiskMode),
+		cowsql.WithAutoRecovery(o.AutoRecovery),
 	)
 	if err != nil {
 		stop()
@@ -206,7 +206,7 @@ func New(dir string, options ...Option) (app *App, err error) {
 	}
 	cleanups = append(cleanups, func() { node.Close() })
 
-	// Register the local dqlite driver.
+	// Register the local cowsql driver.
 	driverDial := client.DefaultDialFunc
 	if o.TLS != nil {
 		driverDial = client.DialFuncWithTLS(driverDial, o.TLS.Dial)
@@ -224,7 +224,7 @@ func New(dir string, options ...Option) (app *App, err error) {
 		stop()
 		return nil, fmt.Errorf("create driver: %w", err)
 	}
-	driverName := fmt.Sprintf("dqlite-%d", atomic.AddInt64(&driverIndex, 1))
+	driverName := fmt.Sprintf("cowsql-%d", atomic.AddInt64(&driverIndex, 1))
 	sql.Register(driverName, driver)
 
 	if o.Voters < 3 || o.Voters%2 == 0 {
@@ -284,7 +284,7 @@ func New(dir string, options ...Option) (app *App, err error) {
 
 				if isTcp || isTLS {
 					// Write the status line and upgrade header by hand since w.WriteHeader() would fail after Hijack().
-					data := []byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: dqlite\r\n\r\n")
+					data := []byte("HTTP/1.1 101 Switching Protocols\r\nUpgrade: cowsql\r\n\r\n")
 					n, err := remote.Write(data)
 					if err != nil || n != len(data) {
 						remote.Close()
@@ -426,17 +426,17 @@ func (a *App) Close() error {
 	return nil
 }
 
-// ID returns the dqlite ID of this application node.
+// ID returns the cowsql ID of this application node.
 func (a *App) ID() uint64 {
 	return a.id
 }
 
-// Address returns the dqlite address of this application node.
+// Address returns the cowsql address of this application node.
 func (a *App) Address() string {
 	return a.address
 }
 
-// Driver returns the name used to register the dqlite driver.
+// Driver returns the name used to register the cowsql driver.
 func (a *App) Driver() string {
 	return a.driverName
 }
@@ -458,7 +458,7 @@ func (a *App) Ready(ctx context.Context) error {
 	}
 }
 
-// Open the dqlite database with the given name
+// Open the cowsql database with the given name
 func (a *App) Open(ctx context.Context, database string) (*sql.DB, error) {
 	db, err := sql.Open(a.Driver(), database)
 	if err != nil {

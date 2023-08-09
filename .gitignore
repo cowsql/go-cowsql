@@ -1,7 +1,7 @@
 .sqlite
-cmd/dqlite/dqlite
-cmd/dqlite-demo/dqlite-demo
-dqlite
-dqlite-demo
+cmd/cowsql/cowsql
+cmd/cowsql-demo/cowsql-demo
+cowsql
+cowsql-demo
 profile.coverprofile
 overalls.coverprofile

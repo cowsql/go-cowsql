@@ -3,7 +3,7 @@ package protocol
 // VersionOne is version 1 of the server protocol.
 const VersionOne = uint64(1)
 
-// VersionLegacy is the pre 1.0 dqlite server protocol version.
+// VersionLegacy is the pre 1.0 cowsql server protocol version.
 const VersionLegacy = uint64(0x86104dd760433fe5)
 
 // Cluster response formats

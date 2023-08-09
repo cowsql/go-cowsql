@@ -1,10 +1,10 @@
 package bindings
 
 /*
-#cgo linux LDFLAGS: -ldqlite
+#cgo linux LDFLAGS: -lcowsql
 */
 import "C"
 
-// required dqlite version
-var dqliteMajorVersion int = 1
-var dqliteMinorVersion int = 14
+// required cowsql version
+var cowsqlMajorVersion int = 1
+var cowsqlMinorVersion int = 14

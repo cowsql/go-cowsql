@@ -23,9 +23,9 @@ jobs:
 
     - name: Setup dependencies
       run: |
-        sudo add-apt-repository ppa:dqlite/dev -y
+        sudo add-apt-repository ppa:cowsql/master -y
         sudo apt update
-        sudo apt install -y libsqlite3-dev libuv1-dev liblz4-dev libraft-dev libdqlite-dev
+        sudo apt install -y libsqlite3-dev libuv1-dev liblz4-dev libraft-dev libcowsql-dev
 
     - name: Build & Benchmark
       env:
@@ -33,21 +33,21 @@ jobs:
         GO_DQLITE_MULTITHREAD: 1
       run: |
         go get -t -tags libsqlite3 ./...
-        go install -tags libsqlite3 github.com/canonical/go-dqlite/cmd/dqlite-benchmark
+        go install -tags libsqlite3 github.com/cowsql/go-cowsql/cmd/cowsql-benchmark
         diskmode=$(if [ ${{ matrix.disk }} -eq 1 ]; then echo -n "--disk"; fi)
-        dqlite-benchmark --db 127.0.0.1:9001 --duration 3600 --driver $diskmode --cluster 127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003 --workload kvreadwrite &
+        cowsql-benchmark --db 127.0.0.1:9001 --duration 3600 --driver $diskmode --cluster 127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003 --workload kvreadwrite &
         masterpid=$!
-        dqlite-benchmark --db 127.0.0.1:9002 --join 127.0.0.1:9001 &
-        dqlite-benchmark --db 127.0.0.1:9003 --join 127.0.0.1:9001 &
+        cowsql-benchmark --db 127.0.0.1:9002 --join 127.0.0.1:9001 &
+        cowsql-benchmark --db 127.0.0.1:9003 --join 127.0.0.1:9001 &
         wait $masterpid
         echo "Write results:"
-        head -n 5 /tmp/dqlite-benchmark/127.0.0.1:9001/results/0-exec-*
+        head -n 5 /tmp/cowsql-benchmark/127.0.0.1:9001/results/0-exec-*
 
         echo ""
         echo "Read results:"
-        head -n 5 /tmp/dqlite-benchmark/127.0.0.1:9001/results/0-query-*
+        head -n 5 /tmp/cowsql-benchmark/127.0.0.1:9001/results/0-query-*
 
     - uses: actions/upload-artifact@v3
       with:
-        name: dqlite-daily-benchmark
-        path: /tmp/dqlite-benchmark/127.0.0.1:9001/results/*
+        name: cowsql-daily-benchmark
+        path: /tmp/cowsql-benchmark/127.0.0.1:9001/results/*

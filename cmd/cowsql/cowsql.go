@@ -10,9 +10,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/canonical/go-dqlite/app"
-	"github.com/canonical/go-dqlite/client"
-	"github.com/canonical/go-dqlite/internal/shell"
+	"github.com/cowsql/go-cowsql/app"
+	"github.com/cowsql/go-cowsql/client"
+	"github.com/cowsql/go-cowsql/internal/shell"
 	"github.com/peterh/liner"
 	"github.com/spf13/cobra"
 )
@@ -24,8 +24,8 @@ func main() {
 	var format string
 
 	cmd := &cobra.Command{
-		Use:   "dqlite -s <servers> <database> [command]",
-		Short: "Standard dqlite shell",
+		Use:   "cowsql -s <servers> <database> [command]",
+		Short: "Standard cowsql shell",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(*servers) == 0 {
@@ -105,7 +105,7 @@ func main() {
 			defer line.Close()
 
 			for {
-				input, err := line.Prompt("dqlite> ")
+				input, err := line.Prompt("cowsql> ")
 				if err != nil {
 					if err == io.EOF {
 						break

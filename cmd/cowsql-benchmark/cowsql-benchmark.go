@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/canonical/go-dqlite/app"
-	"github.com/canonical/go-dqlite/benchmark"
+	"github.com/cowsql/go-cowsql/app"
+	"github.com/cowsql/go-cowsql/benchmark"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
@@ -17,7 +17,7 @@ import (
 
 const (
 	defaultClusterTimeout = 120
-	defaultDir            = "/tmp/dqlite-benchmark"
+	defaultDir            = "/tmp/cowsql-benchmark"
 	defaultDiskMode       = false
 	defaultDriver         = false
 	defaultDurationS      = 60
@@ -25,19 +25,19 @@ const (
 	defaultKvValueSize    = 1024
 	defaultWorkers        = 1
 	defaultWorkload       = "kvwrite"
-	docString             = "For benchmarking dqlite.\n\n" +
+	docString             = "For benchmarking cowsql.\n\n" +
 		"Run a 1 node benchmark:\n" +
-		"dqlite-benchmark -d 127.0.0.1:9001 --driver --cluster 127.0.0.1:9001\n\n" +
+		"cowsql-benchmark -d 127.0.0.1:9001 --driver --cluster 127.0.0.1:9001\n\n" +
 		"Run a multi-node benchmark, the first node will self-elect and become leader,\n" +
 		"the driver flag results in the workload being run from the first, leader node.\n" +
-		"dqlite-benchmark --db 127.0.0.1:9001 --driver --cluster 127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003 &\n" +
-		"dqlite-benchmark --db 127.0.0.1:9002 --join 127.0.0.1:9001 &\n" +
-		"dqlite-benchmark --db 127.0.0.1:9003 --join 127.0.0.1:9001 &\n\n" +
+		"cowsql-benchmark --db 127.0.0.1:9001 --driver --cluster 127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003 &\n" +
+		"cowsql-benchmark --db 127.0.0.1:9002 --join 127.0.0.1:9001 &\n" +
+		"cowsql-benchmark --db 127.0.0.1:9003 --join 127.0.0.1:9001 &\n\n" +
 		"Run a multi-node benchmark, the first node will self-elect and become leader,\n" +
 		"the driver flag results in the workload being run from the third, non-leader node.\n" +
-		"dqlite-benchmark --db 127.0.0.1:9001 &\n" +
-		"dqlite-benchmark --db 127.0.0.1:9002 --join 127.0.0.1:9001 &\n" +
-		"dqlite-benchmark --db 127.0.0.1:9003 --join 127.0.0.1:9001 --driver --cluster 127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003 &\n\n" +
+		"cowsql-benchmark --db 127.0.0.1:9001 &\n" +
+		"cowsql-benchmark --db 127.0.0.1:9002 --join 127.0.0.1:9001 &\n" +
+		"cowsql-benchmark --db 127.0.0.1:9003 --join 127.0.0.1:9001 --driver --cluster 127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003 &\n\n" +
 		"The results can be found on the `driver` node in " + defaultDir + "/results or in the directory provided to the tool.\n" +
 		"Benchmark results are files named `n-q-timestamp` where `n` is the number of the worker,\n" +
 		"`q` is the type of query that was tracked. All results in the file are in milliseconds.\n"
@@ -67,8 +67,8 @@ func main() {
 	var diskMode bool
 
 	cmd := &cobra.Command{
-		Use:   "dqlite-benchmark",
-		Short: "For benchmarking dqlite",
+		Use:   "cowsql-benchmark",
+		Short: "For benchmarking cowsql",
 		Long:  docString,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := filepath.Join(dir, db)
@@ -146,7 +146,7 @@ func main() {
 	flags.IntVar(&workers, "workers", defaultWorkers, "Number of workers executing the workload.")
 	flags.IntVar(&kvKeySize, "key-size", defaultKvKeySize, "Size of the KV keys in bytes.")
 	flags.IntVar(&kvValueSize, "value-size", defaultKvValueSize, "Size of the KV values in bytes.")
-	flags.BoolVar(&diskMode, "disk", defaultDiskMode, "Warning: Unstable, Experimental. Set this flag to enable dqlite's disk-mode.")
+	flags.BoolVar(&diskMode, "disk", defaultDiskMode, "Warning: Unstable, Experimental. Set this flag to enable cowsql's disk-mode.")
 
 	cmd.MarkFlagRequired("db")
 	if err := cmd.Execute(); err != nil {

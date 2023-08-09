@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 
-	"github.com/canonical/go-dqlite/internal/protocol"
+	"github.com/cowsql/go-cowsql/internal/protocol"
 )
 
 // FindLeader returns a Client connected to the current cluster leader.

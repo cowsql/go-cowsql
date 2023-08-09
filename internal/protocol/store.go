@@ -29,8 +29,8 @@ type NodeInfo struct {
 	Role    NodeRole `yaml:"Role"`
 }
 
-// NodeStore is used by a dqlite client to get an initial list of candidate
-// dqlite servers that it can dial in order to find a leader server to connect
+// NodeStore is used by a cowsql client to get an initial list of candidate
+// cowsql servers that it can dial in order to find a leader server to connect
 // to.
 //
 // Once connected, the client periodically updates the server addresses in the

@@ -1,11 +1,11 @@
-# dqlite-demo test utilities
+# cowsql-demo test utilities
 
 GO=${GO:-go}
 ASAN=${ASAN:-}
 VERBOSE=${VERBOSE:-0}
 DISK=${DISK:-0}
 
-$GO build -tags libsqlite3 $ASAN ./cmd/dqlite-demo/
+$GO build -tags libsqlite3 $ASAN ./cmd/cowsql-demo/
 
 DIR=$(mktemp -d)
 
@@ -24,7 +24,7 @@ start_node() {
         disk="--disk"
     fi
 
-    ./dqlite-demo --dir "$DIR" --api=127.0.0.1:800"${n}" --db=127.0.0.1:900"${n}" "$join" $verbose $disk &
+    ./cowsql-demo --dir "$DIR" --api=127.0.0.1:800"${n}" --db=127.0.0.1:900"${n}" "$join" $verbose $disk &
     echo "${!}" > "${pidfile}"
 
     i=0
@@ -61,7 +61,7 @@ set_up_node() {
         join=--join=127.0.0.1:9001
     fi
 
-    echo "=> Set up dqlite-demo node $n"
+    echo "=> Set up cowsql-demo node $n"
 
     start_node "${n}" "${join}"
 }
@@ -69,13 +69,13 @@ set_up_node() {
 tear_down_node() {
     n=$1
 
-    echo "=> Tear down dqlite-demo node $n"
+    echo "=> Tear down cowsql-demo node $n"
 
     kill_node "$n"
 }
 
 set_up() {
-    echo "=> Set up dqlite-demo cluster"
+    echo "=> Set up cowsql-demo cluster"
     set_up_node 1
     set_up_node 2
     set_up_node 3
@@ -85,7 +85,7 @@ tear_down() {
     err=$?
     trap '' HUP INT TERM
 
-    echo "=> Tear down dqlite-demo cluster"
+    echo "=> Tear down cowsql-demo cluster"
     tear_down_node 3
     tear_down_node 2
     tear_down_node 1

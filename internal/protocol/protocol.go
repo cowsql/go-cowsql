@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Protocol sends and receive the dqlite message on the wire.
+// Protocol sends and receive the cowsql message on the wire.
 type Protocol struct {
 	version uint64        // Protocol version
 	conn    net.Conn      // Underlying network connection.
@@ -30,10 +30,10 @@ func newProtocol(version uint64, conn net.Conn) *Protocol {
 	return protocol
 }
 
-// Call invokes a dqlite RPC, sending a request message and receiving a
+// Call invokes a cowsql RPC, sending a request message and receiving a
 // response message.
 func (p *Protocol) Call(ctx context.Context, request, response *Message) (err error) {
-	// We need to take a lock since the dqlite server currently does not
+	// We need to take a lock since the cowsql server currently does not
 	// support concurrent requests.
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -82,7 +82,7 @@ func (p *Protocol) More(ctx context.Context, response *Message) error {
 // Interrupt sends an interrupt request and awaits for the server's empty
 // response.
 func (p *Protocol) Interrupt(ctx context.Context, request *Message, response *Message) error {
-	// We need to take a lock since the dqlite server currently does not
+	// We need to take a lock since the cowsql server currently does not
 	// support concurrent requests.
 	p.mu.Lock()
 	defer p.mu.Unlock()

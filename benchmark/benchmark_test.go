@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/canonical/go-dqlite/app"
-	"github.com/canonical/go-dqlite/benchmark"
+	"github.com/cowsql/go-cowsql/app"
+	"github.com/cowsql/go-cowsql/benchmark"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +22,7 @@ const (
 func bmSetup(t *testing.T, addr string, join []string) (string, *app.App, *sql.DB, func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "dqlite-app-test-")
+	dir, err := ioutil.TempDir("", "cowsql-app-test-")
 	require.NoError(t, err)
 
 	app, err := app.New(dir, app.WithAddress(addr), app.WithCluster(join))

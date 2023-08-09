@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	dqlite "github.com/canonical/go-dqlite"
-	"github.com/canonical/go-dqlite/client"
-	"github.com/canonical/go-dqlite/driver"
-	"github.com/canonical/go-dqlite/logging"
+	cowsql "github.com/cowsql/go-cowsql"
+	"github.com/cowsql/go-cowsql/client"
+	"github.com/cowsql/go-cowsql/driver"
+	"github.com/cowsql/go-cowsql/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -329,7 +329,7 @@ func newDBWithInfos(t *testing.T, infos []client.NodeInfo) (*sql.DB, []*nodeHelp
 	driver, err := driver.New(store, driver.WithLogFunc(log))
 	require.NoError(t, err)
 
-	driverName := fmt.Sprintf("dqlite-integration-test-%d", driversCount)
+	driverName := fmt.Sprintf("cowsql-integration-test-%d", driversCount)
 	sql.Register(driverName, driver)
 
 	driversCount++
@@ -346,7 +346,7 @@ func newDBWithInfos(t *testing.T, infos []client.NodeInfo) (*sql.DB, []*nodeHelp
 }
 
 func registerDriver(driver *driver.Driver) string {
-	name := fmt.Sprintf("dqlite-integration-test-%d", driversCount)
+	name := fmt.Sprintf("cowsql-integration-test-%d", driversCount)
 	sql.Register(name, driver)
 	driversCount++
 	return name
@@ -357,7 +357,7 @@ type nodeHelper struct {
 	ID      uint64
 	Address string
 	Dir     string
-	Node    *dqlite.Node
+	Node    *cowsql.Node
 }
 
 func newNodeHelper(t *testing.T, id uint64, address string) *nodeHelper {
@@ -384,7 +384,7 @@ func (h *nodeHelper) Client() *client.Client {
 func (h *nodeHelper) Create() {
 	var err error
 	require.Nil(h.t, h.Node)
-	h.Node, err = dqlite.New(h.ID, h.Address, h.Dir, dqlite.WithBindAddress(h.Address))
+	h.Node, err = cowsql.New(h.ID, h.Address, h.Dir, cowsql.WithBindAddress(h.Address))
 	require.NoError(h.t, err)
 }
 

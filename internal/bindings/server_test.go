@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/canonical/go-dqlite/internal/bindings"
-	"github.com/canonical/go-dqlite/internal/protocol"
+	"github.com/cowsql/go-cowsql/internal/bindings"
+	"github.com/cowsql/go-cowsql/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -213,7 +213,7 @@ func makeClientRequest(t *testing.T, conn net.Conn, kind byte) []byte {
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "dqlite-replication-test-")
+	dir, err := ioutil.TempDir("", "cowsql-replication-test-")
 	assert.NoError(t, err)
 
 	cleanup := func() {

@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/canonical/go-dqlite/app"
-	"github.com/canonical/go-dqlite/client"
+	"github.com/cowsql/go-cowsql/app"
+	"github.com/cowsql/go-cowsql/client"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
@@ -32,11 +32,11 @@ func main() {
 	var key string
 
 	cmd := &cobra.Command{
-		Use:   "dqlite-demo",
-		Short: "Demo application using dqlite",
-		Long: `This demo shows how to integrate a Go application with dqlite.
+		Use:   "cowsql-demo",
+		Short: "Demo application using cowsql",
+		Long: `This demo shows how to integrate a Go application with cowsql.
 
-Complete documentation is available at https://github.com/canonical/go-dqlite`,
+Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := filepath.Join(dir, db)
 			if err := os.MkdirAll(dir, 0755); err != nil {
@@ -142,9 +142,9 @@ Complete documentation is available at https://github.com/canonical/go-dqlite`,
 	flags.StringVarP(&api, "api", "a", "", "address used to expose the demo API")
 	flags.StringVarP(&db, "db", "d", "", "address used for internal database replication")
 	join = flags.StringSliceP("join", "j", nil, "database addresses of existing nodes")
-	flags.StringVarP(&dir, "dir", "D", "/tmp/dqlite-demo", "data directory")
+	flags.StringVarP(&dir, "dir", "D", "/tmp/cowsql-demo", "data directory")
 	flags.BoolVarP(&verbose, "verbose", "v", false, "verbose logging")
-	flags.BoolVar(&diskMode, "disk", defaultDiskMode, "Warning: Unstable, Experimental. Set this flag to enable dqlite's disk-mode.")
+	flags.BoolVar(&diskMode, "disk", defaultDiskMode, "Warning: Unstable, Experimental. Set this flag to enable cowsql's disk-mode.")
 	flags.StringVarP(&crt, "cert", "c", "", "public TLS cert")
 	flags.StringVarP(&key, "key", "k", "", "private TLS key")
 

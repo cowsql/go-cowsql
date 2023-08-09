@@ -11,7 +11,7 @@ CLUSTER=127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003,127.0.0.1:9004,127.0.0.1:90
 N=7
 DISK=${DISK:-0}
 
-$GO build -tags libsqlite3 $ASAN ./cmd/dqlite/
+$GO build -tags libsqlite3 $ASAN ./cmd/cowsql/
 
 
 set_up_binary() {
@@ -26,8 +26,8 @@ import (
     "time"
     "path/filepath"
     "strconv"
-    "github.com/canonical/go-dqlite/client"
-    "github.com/canonical/go-dqlite/app"
+    "github.com/cowsql/go-cowsql/client"
+    "github.com/cowsql/go-cowsql/app"
     "golang.org/x/sys/unix"
 )
 
@@ -107,15 +107,15 @@ wait_stable() {
   i=0
   while true; do
     i=$(expr $i + 1)
-    voters=$(./dqlite -s "$CLUSTER" test .cluster | grep voter | wc -l)
-    standbys=$(./dqlite -s "$CLUSTER" test .cluster | grep stand-by | wc -l)
-    spares=$(./dqlite -s "$CLUSTER" test .cluster | grep spare | wc -l)
+    voters=$(./cowsql -s "$CLUSTER" test .cluster | grep voter | wc -l)
+    standbys=$(./cowsql -s "$CLUSTER" test .cluster | grep stand-by | wc -l)
+    spares=$(./cowsql -s "$CLUSTER" test .cluster | grep spare | wc -l)
     if [ "$voters" -eq 3 ] && [ "$standbys" -eq 3 ] &&  [ "$spares" -eq 1 ] ; then
         break
     fi
     if [ "$i" -eq 40 ]; then
       echo "Error: node roles not yet stable after 10 seconds"
-      ./dqlite -s "$CLUSTER" test .cluster
+      ./cowsql -s "$CLUSTER" test .cluster
       exit 1
     fi
     sleep 0.25
@@ -129,13 +129,13 @@ wait_role() {
     i=0
     while true; do
         i=$(expr $i + 1)
-        current=$(./dqlite -s "$CLUSTER" test .cluster | grep "127.0.0.1:900${index}" | cut -f 3 -d "|")
+        current=$(./cowsql -s "$CLUSTER" test .cluster | grep "127.0.0.1:900${index}" | cut -f 3 -d "|")
         if [ "$current" = "$role" ]; then
             break
         fi
         if [ "$i" -eq 40 ]; then
             echo "Error: node $index has role $current instead of $role"
-            ./dqlite -s "$CLUSTER" test .cluster
+            ./cowsql -s "$CLUSTER" test .cluster
             exit 1
         fi
         sleep 0.25

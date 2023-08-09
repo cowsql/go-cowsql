@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/canonical/go-dqlite"
-	"github.com/canonical/go-dqlite/client"
+	"github.com/cowsql/go-cowsql"
+	"github.com/cowsql/go-cowsql/client"
 )
 
 // Option can be used to tweak app parameters.
@@ -46,7 +46,7 @@ func WithCluster(cluster []string) Option {
 }
 
 // WithExternalConn enables passing an external dial function that will be used
-// whenever dqlite needs to make an outside connection.
+// whenever cowsql needs to make an outside connection.
 //
 // Also takes a net.Conn channel that should be received when the external connection has been accepted.
 func WithExternalConn(dialFunc client.DialFunc, acceptCh chan net.Conn) Option {
@@ -74,7 +74,7 @@ func WithTLS(listen *tls.Config, dial *tls.Config) Option {
 	}
 }
 
-// WithUnixSocket allows setting a specific socket path for communication between go-dqlite and dqlite.
+// WithUnixSocket allows setting a specific socket path for communication between go-cowsql and cowsql.
 //
 // The default is an empty string which means a random abstract unix socket.
 func WithUnixSocket(path string) Option {
@@ -172,7 +172,7 @@ func WithNetworkLatency(latency time.Duration) Option {
 }
 
 // WithSnapshotParams sets the raft snapshot parameters.
-func WithSnapshotParams(params dqlite.SnapshotParams) Option {
+func WithSnapshotParams(params cowsql.SnapshotParams) Option {
 	return func(options *options) {
 		options.SnapshotParams = params
 	}
@@ -226,7 +226,7 @@ type options struct {
 	FailureDomain            uint64
 	NetworkLatency           time.Duration
 	UnixSocket               string
-	SnapshotParams           dqlite.SnapshotParams
+	SnapshotParams           cowsql.SnapshotParams
 	DiskMode                 bool
 	AutoRecovery             bool
 }
@@ -303,6 +303,6 @@ func defaultLogFunc(l client.LogLevel, format string, a ...interface{}) {
 	if l != client.LogError {
 		return
 	}
-	msg := fmt.Sprintf("["+l.String()+"]"+" dqlite: "+format, a...)
+	msg := fmt.Sprintf("["+l.String()+"]"+" cowsql: "+format, a...)
 	log.Printf(msg)
 }
