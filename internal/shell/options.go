@@ -1,19 +1,19 @@
 package shell
 
-import "github.com/canonical/go-dqlite/client"
+import "github.com/cowsql/go-cowsql/client"
 
 // Option that can be used to tweak shell parameters.
 type Option func(*options)
 
-// WithDialFunc sets a custom dial function for connecting to dqlite endpoints.
+// WithDialFunc sets a custom dial function for connecting to cowsql endpoints.
 func WithDialFunc(dial client.DialFunc) Option {
 	return func(options *options) {
 		options.Dial = dial
 	}
 }
 
-// WithDriverName sets a custom name for the registered dqlite driver. The
-// default is "dqlite".
+// WithDriverName sets a custom name for the registered cowsql driver. The
+// default is "cowsql".
 func WithDriverName(name string) Option {
 	return func(options *options) {
 		options.DriverName = name
@@ -37,7 +37,7 @@ type options struct {
 func defaultOptions() *options {
 	return &options{
 		Dial:       client.DefaultDialFunc,
-		DriverName: "dqlite",
+		DriverName: "cowsql",
 		Format:     formatTabular,
 	}
 }

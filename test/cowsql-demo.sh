@@ -1,9 +1,9 @@
 #!/bin/sh -eu
 #
-# Test the dqlite-demo application.
+# Test the cowsql-demo application.
 
 BASEDIR=$(dirname "$0")
-. "$BASEDIR"/dqlite-demo-util.sh
+. "$BASEDIR"/cowsql-demo-util.sh
 
 trap tear_down EXIT
 trap sig_handler HUP INT TERM

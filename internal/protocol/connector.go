@@ -12,14 +12,14 @@ import (
 	"github.com/Rican7/retry"
 	"github.com/Rican7/retry/backoff"
 	"github.com/Rican7/retry/strategy"
-	"github.com/canonical/go-dqlite/logging"
+	"github.com/cowsql/go-cowsql/logging"
 	"github.com/pkg/errors"
 )
 
 // DialFunc is a function that can be used to establish a network connection.
 type DialFunc func(context.Context, string) (net.Conn, error)
 
-// Connector is in charge of creating a dqlite SQL client connected to the
+// Connector is in charge of creating a cowsql SQL client connected to the
 // current leader of a cluster.
 type Connector struct {
 	id     uint64       // Conn ID to use when registering against the server.
@@ -28,8 +28,8 @@ type Connector struct {
 	log    logging.Func // Logging function.
 }
 
-// NewConnector returns a new connector that can be used by a dqlite driver to
-// create new clients connected to a leader dqlite server.
+// NewConnector returns a new connector that can be used by a cowsql driver to
+// create new clients connected to a leader cowsql server.
 func NewConnector(id uint64, store NodeStore, config Config, log logging.Func) *Connector {
 	if config.Dial == nil {
 		config.Dial = Dial
@@ -212,7 +212,7 @@ func Handshake(ctx context.Context, conn net.Conn, version uint64) (*Protocol, e
 	return newProtocol(version, conn), nil
 }
 
-// Connect to the given dqlite server and check if it's the leader.
+// Connect to the given cowsql server and check if it's the leader.
 //
 // Return values:
 //
@@ -247,7 +247,7 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string, versi
 	if err := protocol.Call(ctx, &request, &response); err != nil {
 		protocol.Close()
 		cause := errors.Cause(err)
-		// Best-effort detection of a pre-1.0 dqlite node: when sent
+		// Best-effort detection of a pre-1.0 cowsql node: when sent
 		// version 1 it should close the connection immediately.
 		if err, ok := cause.(*net.OpError); ok && !err.Timeout() || cause == io.EOF {
 			return nil, "", errBadProtocol

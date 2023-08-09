@@ -3,7 +3,7 @@ Note this document is not complete and work in progress.
 # A. INFO
 
 **Always backup your database folders before performing any of the steps
-described below and make sure no dqlite nodes are running!**
+described below and make sure no cowsql nodes are running!**
 
 ## A.1 cluster.yaml
 
@@ -61,7 +61,7 @@ cat <<EOF > "cluster.yaml"
   Role: 0
 EOF
 ```
-3. For every node, run `dqlite -s <DbAddress> <DbName> ".reconfigure <NodeDirectory>
+3. For every node, run `cowsql -s <DbAddress> <DbName> ".reconfigure <NodeDirectory>
    <TargetClusterYamlPath>"`
    The `DbAddress`, `DbName` aren't really important, just use something
    syntactically correct, we are more interested in the side effects of this
@@ -78,7 +78,7 @@ command will be added in the future.
 
 # B. Restoring Data
 
-## B.1 Loading existing data and existing network/node configuration in `dqlite-demo`
+## B.1 Loading existing data and existing network/node configuration in `cowsql-demo`
 
 *Use this when you have access to the machines where the database lives and want
 to start the database with the unaltered data of every node.*
@@ -89,7 +89,7 @@ to start the database with the unaltered data of every node.*
    the `DataDirectory`.
 2. For every node in `cluster.yaml`, create a directory with name equal to
    `DbAddress` under the `DataDirectory`, unique to the node,  this `host:port`
-   will be needed later on for the `--db` argument when you start the `dqlite-demo`
+   will be needed later on for the `--db` argument when you start the `cowsql-demo`
    application, e.g. for node 1 you now have a directory `data/127.0.0.1:9001`.
    We will refer to this as the `NodeDirectory`.
 3. For every node in `cluster.yaml`, copy all the data for that node to
@@ -97,17 +97,17 @@ to start the database with the unaltered data of every node.*
 4. For every node in `cluster.yaml`, make sure there exists an `info.yaml`
    in `NodeDirectory` that contains the information as found in `cluster.yaml`.
 5. For every node in `cluster.yaml`, run:
-   `dqlite-demo --dir <DataDirectory> --api <ApiAddress> --db <DbAddress>`,
+   `cowsql-demo --dir <DataDirectory> --api <ApiAddress> --db <DbAddress>`,
    where `ApiAddress` is a `host:port`,
-   e.g. `dqlite-demo --dir data --api 127.0.0.1:8001 --db 127.0.0.1:9001`.
+   e.g. `cowsql-demo --dir data --api 127.0.0.1:8001 --db 127.0.0.1:9001`.
    Remark that it is important that `--dir` is a path to the newly created
    `DataDirectory`, otherwise the demo will create a new directory without the
    existing data.
-6. You should have an operational cluster, access it through e.g. the `dqlite`
+6. You should have an operational cluster, access it through e.g. the `cowsql`
    cli tool.
 
 
-## B.2 Restore existing data and new network/node configuration in `dqlite-demo`.
+## B.2 Restore existing data and new network/node configuration in `cowsql-demo`.
 
 *Use this when you don't have access to the machines where the database lives and want
 to start the database with data from a specific node or when you have access to
@@ -130,19 +130,19 @@ We will refer to this file by `TargetClusterYaml` and to its location by
 7. For every node, make sure there is an `info.yaml` in `NodeDirectory` that is in line with
    `cluster.yaml` and correct for that node.
 8. For every node, run:
-   `dqlite-demo --dir <DataDirectory> --api <ApiAddress> --db <DbAddress>`.
-9. You should have an operational cluster, access it through e.g. the `dqlite`
+   `cowsql-demo --dir <DataDirectory> --api <ApiAddress> --db <DbAddress>`.
+9. You should have an operational cluster, access it through e.g. the `cowsql`
    cli tool.
 
 ## Terminology
 
-- ApiAddress: `host:port` where the `dqlite-demo` REST api is available.
+- ApiAddress: `host:port` where the `cowsql-demo` REST api is available.
 - DataDirectory: Base directory under which the NodeDirectories are saved.
 - data file: segment file, snapshot file or snapshot.meta file.
 - DbAddress: `host:port` used for database replication.
 - DbName: name of the sqlite database.
 - metadata file: file named `metadata1` or `metadata2`.
-- NodeDirectory: Directory where node specific data is saved, for `dqlite-demo`
+- NodeDirectory: Directory where node specific data is saved, for `cowsql-demo`
   it should be named `DbAddress` and exist under `DataDirectory`.
 - segment file: file named like `0000000057685378-0000000057685875`,
   meaning `startindex-endindex`, these contain raft log entries.

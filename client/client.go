@@ -3,14 +3,14 @@ package client
 import (
 	"context"
 
-	"github.com/canonical/go-dqlite/internal/protocol"
+	"github.com/cowsql/go-cowsql/internal/protocol"
 	"github.com/pkg/errors"
 )
 
 // DialFunc is a function that can be used to establish a network connection.
 type DialFunc = protocol.DialFunc
 
-// Client speaks the dqlite wire protocol.
+// Client speaks the cowsql wire protocol.
 type Client struct {
 	protocol *protocol.Protocol
 }
@@ -39,7 +39,7 @@ func WithLogFunc(log LogFunc) Option {
 	}
 }
 
-// New creates a new client connected to the dqlite node with the given
+// New creates a new client connected to the cowsql node with the given
 // address.
 func New(ctx context.Context, address string, options ...Option) (*Client, error) {
 	o := defaultOptions()

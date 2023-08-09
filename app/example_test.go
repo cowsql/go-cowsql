@@ -5,18 +5,18 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/canonical/go-dqlite/app"
+	"github.com/cowsql/go-cowsql/app"
 )
 
-// To start the first node of a dqlite cluster for the first time, its network
+// To start the first node of a cowsql cluster for the first time, its network
 // address should be specified using the app.WithAddress() option.
 //
 // When the node is restarted a second time, the app.WithAddress() option might
 // be omitted, since the node address will be persisted in the info.yaml file.
 //
-// The very first node has always the same ID (dqlite.BootstrapID).
+// The very first node has always the same ID (cowsql.BootstrapID).
 func Example() {
-	dir, err := ioutil.TempDir("", "dqlite-app-example-")
+	dir, err := ioutil.TempDir("", "cowsql-app-example-")
 	if err != nil {
 		return
 	}
@@ -55,19 +55,19 @@ func Example() {
 //
 // Each additional node will be automatically assigned a unique ID.
 func ExampleWithCluster() {
-	dir1, err := ioutil.TempDir("", "dqlite-app-example-")
+	dir1, err := ioutil.TempDir("", "cowsql-app-example-")
 	if err != nil {
 		return
 	}
 	defer os.RemoveAll(dir1)
 
-	dir2, err := ioutil.TempDir("", "dqlite-app-example-")
+	dir2, err := ioutil.TempDir("", "cowsql-app-example-")
 	if err != nil {
 		return
 	}
 	defer os.RemoveAll(dir2)
 
-	dir3, err := ioutil.TempDir("", "dqlite-app-example-")
+	dir3, err := ioutil.TempDir("", "cowsql-app-example-")
 	if err != nil {
 		return
 	}

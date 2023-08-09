@@ -7,9 +7,9 @@ import (
 	"database/sql"
 	"testing"
 
-	dqlite "github.com/canonical/go-dqlite"
-	"github.com/canonical/go-dqlite/client"
-	"github.com/canonical/go-dqlite/driver"
+	cowsql "github.com/cowsql/go-cowsql"
+	"github.com/cowsql/go-cowsql/client"
+	"github.com/cowsql/go-cowsql/driver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,7 +63,7 @@ func TestConfigMultiThread(t *testing.T) {
 	cleanup := dummyDBSetup(t)
 	defer cleanup()
 
-	err := dqlite.ConfigMultiThread()
+	err := cowsql.ConfigMultiThread()
 	assert.EqualError(t, err, "SQLite is already initialized")
 }
 

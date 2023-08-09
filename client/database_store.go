@@ -19,7 +19,7 @@ type nodeStoreOptions struct {
 	Where string
 }
 
-// DatabaseNodeStore persists a list addresses of dqlite nodes in a SQL table.
+// DatabaseNodeStore persists a list addresses of cowsql nodes in a SQL table.
 type DatabaseNodeStore struct {
 	db     *sql.DB // Database handle to use.
 	schema string  // Name of the schema holding the servers table.

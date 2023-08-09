@@ -1,15 +1,15 @@
-package dqlite
+package cowsql
 
 import (
 	"context"
 	"time"
 
-	"github.com/canonical/go-dqlite/client"
-	"github.com/canonical/go-dqlite/internal/bindings"
+	"github.com/cowsql/go-cowsql/client"
+	"github.com/cowsql/go-cowsql/internal/bindings"
 	"github.com/pkg/errors"
 )
 
-// Node runs a dqlite node.
+// Node runs a cowsql node.
 type Node struct {
 	log         client.LogFunc // Logger
 	server      *bindings.Node // Low-level C implementation
@@ -23,7 +23,7 @@ type Node struct {
 // NodeInfo is a convenience alias for client.NodeInfo.
 type NodeInfo = client.NodeInfo
 
-// SnapshotParams exposes bindings.SnapshotParams. Used for setting dqlite's
+// SnapshotParams exposes bindings.SnapshotParams. Used for setting cowsql's
 // snapshot parameters.
 // SnapshotParams.Threshold controls after how many raft log entries a snapshot is
 // taken. The higher this number, the lower the frequency of the snapshots.
@@ -69,7 +69,7 @@ func WithSnapshotParams(params SnapshotParams) Option {
 	}
 }
 
-// WithDiskMode enables dqlite disk-mode on the node.
+// WithDiskMode enables cowsql disk-mode on the node.
 // WARNING: This is experimental API, use with caution
 // and prepare for data loss.
 // UNSTABLE: Behavior can change in future.
@@ -162,7 +162,7 @@ func (s *Node) Recover(cluster []NodeInfo) error {
 	return s.server.Recover(cluster)
 }
 
-// Hold configuration options for a dqlite server.
+// Hold configuration options for a cowsql server.
 type options struct {
 	Log            client.LogFunc
 	DialFunc       client.DialFunc
@@ -176,7 +176,7 @@ type options struct {
 // Close the server, releasing all resources it created.
 func (s *Node) Close() error {
 	s.cancel()
-	// Send a stop signal to the dqlite event loop.
+	// Send a stop signal to the cowsql event loop.
 	if err := s.server.Stop(); err != nil {
 		return errors.Wrap(err, "server failed to stop")
 	}
@@ -216,7 +216,7 @@ func ReconfigureMembership(dir string, cluster []NodeInfo) error {
 // It forces appending a new configuration to the raft log stored in the given
 // directory, effectively replacing the current configuration.
 // In comparision with ReconfigureMembership, this function takes the node role
-// into account and makes use of a dqlite API that supports extending the
+// into account and makes use of a cowsql API that supports extending the
 // NodeInfo struct.
 func ReconfigureMembershipExt(dir string, cluster []NodeInfo) error {
 	server, err := bindings.NewNode(context.Background(), 1, "1", dir)

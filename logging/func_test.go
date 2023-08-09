@@ -3,7 +3,7 @@ package logging_test
 import (
 	"testing"
 
-	"github.com/canonical/go-dqlite/logging"
+	"github.com/cowsql/go-cowsql/logging"
 )
 
 func Test_TestFunc(t *testing.T) {

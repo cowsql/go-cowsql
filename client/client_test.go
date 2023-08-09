@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	dqlite "github.com/canonical/go-dqlite"
-	"github.com/canonical/go-dqlite/client"
-	"github.com/canonical/go-dqlite/internal/protocol"
+	cowsql "github.com/cowsql/go-cowsql"
+	"github.com/cowsql/go-cowsql/client"
+	"github.com/cowsql/go-cowsql/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -156,13 +156,13 @@ func TestClient_Describe(t *testing.T) {
 	assert.Equal(t, uint64(123), metadata.Weight)
 }
 
-func newNode(t *testing.T) (*dqlite.Node, func()) {
+func newNode(t *testing.T) (*cowsql.Node, func()) {
 	t.Helper()
 	dir, dirCleanup := newDir(t)
 
 	id := uint64(1)
 	address := fmt.Sprintf("@%d", id+1000)
-	node, err := dqlite.New(uint64(1), address, dir, dqlite.WithBindAddress(address))
+	node, err := cowsql.New(uint64(1), address, dir, cowsql.WithBindAddress(address))
 	require.NoError(t, err)
 
 	err = node.Start()
@@ -176,7 +176,7 @@ func newNode(t *testing.T) (*dqlite.Node, func()) {
 	return node, cleanup
 }
 
-func addNode(t *testing.T, cli *client.Client, id uint64) (*dqlite.Node, func()) {
+func addNode(t *testing.T, cli *client.Client, id uint64) (*cowsql.Node, func()) {
 	t.Helper()
 	dir, dirCleanup := newDir(t)
 
@@ -184,7 +184,7 @@ func addNode(t *testing.T, cli *client.Client, id uint64) (*dqlite.Node, func())
 	defer cancel()
 
 	address := fmt.Sprintf("@%d", id+1000)
-	node, err := dqlite.New(id, address, dir, dqlite.WithBindAddress(address))
+	node, err := cowsql.New(id, address, dir, cowsql.WithBindAddress(address))
 	require.NoError(t, err)
 
 	err = node.Start()
@@ -211,7 +211,7 @@ func addNode(t *testing.T, cli *client.Client, id uint64) (*dqlite.Node, func())
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "dqlite-replication-test-")
+	dir, err := ioutil.TempDir("", "cowsql-replication-test-")
 	assert.NoError(t, err)
 
 	cleanup := func() {

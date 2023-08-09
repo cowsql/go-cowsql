@@ -1,7 +1,7 @@
 package client
 
 import (
-	"github.com/canonical/go-dqlite/internal/protocol"
+	"github.com/cowsql/go-cowsql/internal/protocol"
 )
 
 // Node roles

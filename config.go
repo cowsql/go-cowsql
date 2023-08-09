@@ -1,20 +1,20 @@
 // +build !nosqlite3
 
-package dqlite
+package cowsql
 
 import (
 	"fmt"
 	"os"
 
-	"github.com/canonical/go-dqlite/internal/bindings"
-	"github.com/canonical/go-dqlite/internal/protocol"
+	"github.com/cowsql/go-cowsql/internal/bindings"
+	"github.com/cowsql/go-cowsql/internal/protocol"
 	"github.com/pkg/errors"
 )
 
 // ConfigMultiThread sets the threading mode of SQLite to Multi-thread.
 //
-// By default go-dqlite configures SQLite to Single-thread mode, because the
-// dqlite engine itself is single-threaded, and enabling Multi-thread or
+// By default go-cowsql configures SQLite to Single-thread mode, because the
+// cowsql engine itself is single-threaded, and enabling Multi-thread or
 // Serialized modes would incur in a performance penality.
 //
 // If your Go process also uses SQLite directly (e.g. using the
@@ -24,8 +24,8 @@ import (
 // IMPORTANT: It's possible to successfully change SQLite's threading mode only
 // if no SQLite APIs have been invoked yet (e.g. no database has been opened
 // yet). Therefore you'll typically want to call ConfigMultiThread() very early
-// in your process setup. Alternatively you can set the GO_DQLITE_MULTITHREAD
-// environment variable to 1 at process startup, in order to prevent go-dqlite
+// in your process setup. Alternatively you can set the GO_COWSQL_MULTITHREAD
+// environment variable to 1 at process startup, in order to prevent go-cowsql
 // from setting Single-thread mode at all.
 func ConfigMultiThread() error {
 	if err := bindings.ConfigMultiThread(); err != nil {
@@ -38,9 +38,9 @@ func ConfigMultiThread() error {
 }
 
 func init() {
-	// Don't enable single thread mode by default if GO_DQLITE_MULTITHREAD
+	// Don't enable single thread mode by default if GO_COWSQL_MULTITHREAD
 	// is set.
-	if os.Getenv("GO_DQLITE_MULTITHREAD") == "1" {
+	if os.Getenv("GO_COWSQL_MULTITHREAD") == "1" {
 		return
 	}
 	err := bindings.ConfigSingleThread()

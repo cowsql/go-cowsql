@@ -18,9 +18,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/canonical/go-dqlite"
-	"github.com/canonical/go-dqlite/app"
-	"github.com/canonical/go-dqlite/client"
+	"github.com/cowsql/go-cowsql"
+	"github.com/cowsql/go-cowsql/app"
+	"github.com/cowsql/go-cowsql/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -889,7 +889,7 @@ func TestOptions(t *testing.T) {
 	options := []app.Option{
 		app.WithAddress("127.0.0.1:9000"),
 		app.WithNetworkLatency(20 * time.Millisecond),
-		app.WithSnapshotParams(dqlite.SnapshotParams{Threshold: 1024, Trailing: 1024}),
+		app.WithSnapshotParams(cowsql.SnapshotParams{Threshold: 1024, Trailing: 1024}),
 		app.WithTracing(client.LogDebug),
 	}
 	app, cleanup := newApp(t, options...)
@@ -1139,7 +1139,7 @@ var appIndex int
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "dqlite-app-test-")
+	dir, err := ioutil.TempDir("", "cowsql-app-test-")
 	assert.NoError(t, err)
 
 	cleanup := func() {

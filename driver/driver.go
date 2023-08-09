@@ -27,18 +27,18 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/canonical/go-dqlite/client"
-	"github.com/canonical/go-dqlite/internal/protocol"
+	"github.com/cowsql/go-cowsql/client"
+	"github.com/cowsql/go-cowsql/internal/protocol"
 )
 
-// Driver perform queries against a dqlite server.
+// Driver perform queries against a cowsql server.
 type Driver struct {
 	log               client.LogFunc   // Log function to use
-	store             client.NodeStore // Holds addresses of dqlite servers
+	store             client.NodeStore // Holds addresses of cowsql servers
 	context           context.Context  // Global cancellation context
 	connectionTimeout time.Duration    // Max time to wait for a new connection
 	contextTimeout    time.Duration    // Default client context timeout.
-	clientConfig      protocol.Config  // Configuration for dqlite client instances
+	clientConfig      protocol.Config  // Configuration for cowsql client instances
 	tracing           client.LogLevel  // Whether to trace statements
 }
 
@@ -81,7 +81,7 @@ func WithLogFunc(log client.LogFunc) Option {
 }
 
 // DialFunc is a function that can be used to establish a network connection
-// with a dqlite node.
+// with a cowsql node.
 type DialFunc = protocol.DialFunc
 
 // WithDialFunc sets a custom dial function.
@@ -176,7 +176,7 @@ func WithTracing(level client.LogLevel) Option {
 	}
 }
 
-// NewDriver creates a new dqlite driver, which also implements the
+// NewDriver creates a new cowsql driver, which also implements the
 // driver.Driver interface.
 func New(store client.NodeStore, options ...Option) (*Driver, error) {
 	o := defaultOptions()
@@ -204,7 +204,7 @@ func New(store client.NodeStore, options ...Option) (*Driver, error) {
 	return driver, nil
 }
 
-// Hold configuration options for a dqlite driver.
+// Hold configuration options for a cowsql driver.
 type options struct {
 	Log                     client.LogFunc
 	Dial                    protocol.DialFunc
@@ -258,7 +258,7 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 	var err error
 	conn.protocol, err = connector.Connect(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create dqlite connection")
+		return nil, errors.Wrap(err, "failed to create cowsql connection")
 	}
 
 	conn.request.Init(4096)
@@ -295,10 +295,10 @@ func (d *Driver) OpenConnector(name string) (driver.Connector, error) {
 	return connector, nil
 }
 
-// Open establishes a new connection to a SQLite database on the dqlite server.
+// Open establishes a new connection to a SQLite database on the cowsql server.
 //
 // The given name must be a pure file name without any directory segment,
-// dqlite will connect to a database with that name in its data directory.
+// cowsql will connect to a database with that name in its data directory.
 //
 // Query parameters are always valid except for "mode=memory".
 //

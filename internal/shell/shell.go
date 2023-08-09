@@ -12,12 +12,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/canonical/go-dqlite"
-	"github.com/canonical/go-dqlite/client"
-	"github.com/canonical/go-dqlite/driver"
+	"github.com/cowsql/go-cowsql"
+	"github.com/cowsql/go-cowsql/client"
+	"github.com/cowsql/go-cowsql/driver"
 )
 
-// Shell can be used to implement interactive prompts for inspecting a dqlite
+// Shell can be used to implement interactive prompts for inspecting a cowsql
 // database.
 type Shell struct {
 	store  client.NodeStore
@@ -96,7 +96,7 @@ func (s *Shell) Process(ctx context.Context, line string) (string, error) {
 
 func (s *Shell) processHelp() string {
 	return `
-Dqlite shell is a simple interactive prompt for inspecting a dqlite database.
+Cowsql shell is a simple interactive prompt for inspecting a cowsql database.
 Enter a SQL statement to execute it, or one of the following built-in commands:
 
   .cluster                          Show the cluster membership
@@ -261,7 +261,7 @@ func (s *Shell) processReconfigure(ctx context.Context, line string) (string, er
 			"\tUse this command when trying to preserve the data from your cluster while changing the\n" +
 			"\tconfiguration of the cluster because e.g. your cluster is broken due to unreachablee nodes.\n" +
 			"\t0. BACKUP ALL YOUR NODE DATA DIRECTORIES BEFORE PROCEEDING!\n" +
-			"\t1. Stop all dqlite nodes.\n" +
+			"\t1. Stop all cowsql nodes.\n" +
 			"\t2. Identify the dir of the node with the most up to date raft term and log, this will be the <dir> argument.\n" +
 			"\t3. Create a .yaml file with the same format as cluster.yaml (or use/adapt an existing cluster.yaml) with the\n " +
 			"\t   desired cluster configuration. This will be the <clusteryaml> argument.\n" +
@@ -271,7 +271,7 @@ func (s *Shell) processReconfigure(ctx context.Context, line string) (string, er
 			"\t   from <dir> over to the directories of the other nodes identified in <clusteryaml>, deleting any leftover snapshot-xxx-xxx-xxx, snapshot-xxx-xxx-xxx.meta,\n" +
 			"\t   segment (00000xxxxx-000000xxxxx, open-xxx) and metadata{1,2} files that it contains.\n" +
 			"\t   Make sure an info.yaml is also present that is in line with cluster.yaml.\n" +
-			"\t6. Start all the dqlite nodes.\n" +
+			"\t6. Start all the cowsql nodes.\n" +
 			"\t7. If, for some reason, this fails or gives undesired results, try again with data from another node (you should still have this from step 0).\n")
 	}
 	dir := parts[1]
@@ -287,7 +287,7 @@ func (s *Shell) processReconfigure(ctx context.Context, line string) (string, er
 		return "NOK", fmt.Errorf("failed to retrieve NodeInfo list :%v", err)
 	}
 
-	err = dqlite.ReconfigureMembershipExt(dir, servers)
+	err = cowsql.ReconfigureMembershipExt(dir, servers)
 	if err != nil {
 		return "NOK", fmt.Errorf("failed to reconfigure membership :%v", err)
 	}

@@ -1,7 +1,7 @@
 package client
 
 import (
-	"github.com/canonical/go-dqlite/logging"
+	"github.com/cowsql/go-cowsql/logging"
 )
 
 // LogFunc is a function that can be used for logging.

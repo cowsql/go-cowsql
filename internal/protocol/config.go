@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// Config holds various configuration parameters for a dqlite client.
+// Config holds various configuration parameters for a cowsql client.
 type Config struct {
 	Dial           DialFunc      // Network dialer.
 	DialTimeout    time.Duration // Timeout for establishing a network connection .

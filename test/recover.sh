@@ -1,11 +1,11 @@
 #!/bin/sh -eu
 #
-# Test the dqlite cluster recovery.
+# Test the cowsql cluster recovery.
 
 BASEDIR=$(dirname "$0")
-. "$BASEDIR"/dqlite-demo-util.sh
+. "$BASEDIR"/cowsql-demo-util.sh
 
-$GO build -tags libsqlite3 ./cmd/dqlite/
+$GO build -tags libsqlite3 ./cmd/cowsql/
 
 trap tear_down EXIT
 trap sig_handler HUP INT TERM
@@ -44,7 +44,7 @@ cat <<EOF > "$target_yaml"
   Role: 1
 EOF
 
-if ! ./dqlite -s 127.0.0.1:9001 test ".reconfigure ${node1_dir} ${target_yaml}"; then
+if ! ./cowsql -s 127.0.0.1:9001 test ".reconfigure ${node1_dir} ${target_yaml}"; then
     echo "Error: Reconfigure failed"
     exit 1
 fi
@@ -54,22 +54,22 @@ start_node 1 ""
 start_node 2 ""
 
 echo "=> Confirming new config"
-if [ "$(./dqlite -s 127.0.0.1:9001 test .leader)" != 127.0.0.1:9001 ]; then
+if [ "$(./cowsql -s 127.0.0.1:9001 test .leader)" != 127.0.0.1:9001 ]; then
     echo "Error: Expected node 1 to be leader"
     exit 1
 fi
 
-if [ "$(./dqlite -s 127.0.0.1:9001 test .cluster | wc -l)" != 2 ]; then
+if [ "$(./cowsql -s 127.0.0.1:9001 test .cluster | wc -l)" != 2 ]; then
     echo "Error: Expected 2 servers in the cluster"
     exit 1
 fi
 
-if ! ./dqlite -s 127.0.0.1:9001 test .cluster | grep -q "127.0.0.1:9001|voter"; then
+if ! ./cowsql -s 127.0.0.1:9001 test .cluster | grep -q "127.0.0.1:9001|voter"; then
     echo "Error: server 1 not voter"
     exit 1
 fi
 
-if ! ./dqlite -s 127.0.0.1:9001 test .cluster | grep -q "127.0.0.1:9002|stand-by"; then
+if ! ./cowsql -s 127.0.0.1:9001 test .cluster | grep -q "127.0.0.1:9002|stand-by"; then
     echo "Error: server 2 not stand-by"
     exit 1
 fi
