@@ -1,16 +1,25 @@
-go-dqlite [![CI tests](https://github.com/canonical/go-dqlite/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/canonical/go-dqlite/actions/workflows/build-and-test.yml) [![Coverage Status](https://coveralls.io/repos/github/canonical/go-dqlite/badge.svg?branch=master)](https://coveralls.io/github/canonical/go-dqlite?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/canonical/go-dqlite)](https://goreportcard.com/report/github.com/canonical/go-dqlite) [![GoDoc](https://godoc.org/github.com/canonical/go-dqlite?status.svg)](https://godoc.org/github.com/canonical/go-dqlite)
+go-cowsql [![CI tests](https://github.com/cowsql/go-cowsql/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cowsql/go-cowsql/actions/workflows/build-and-test.yml) [![Coverage Status](https://coveralls.io/repos/github/cowsql/go-cowsql/badge.svg?branch=master)](https://coveralls.io/github/cowsql/go-cowsql?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/cowsql/go-cowsql)](https://goreportcard.com/report/github.com/cowsql/go-cowsql) [![GoDoc](https://godoc.org/github.com/cowsql/go-cowsql?status.svg)](https://godoc.org/github.com/cowsql/go-cowsql)
 ======
 
-This repository provides the `go-dqlite` Go package, containing bindings for the
-[dqlite](https://github.com/canonical/dqlite) C library and a pure-Go
-client for the dqlite wire [protocol](https://github.com/canonical/dqlite/blob/master/doc/protocol.md).
+This repository provides the `go-cowsql` Go package, containing bindings for the
+[CowSQL](https://github.com/cowsql/cowsql) C library and a pure-Go
+client for the cowsql wire [protocol](https://github.com/cowsql/cowsql/blob/master/doc/protocol.md).
+
+Fork of Canonical go-dqlite
+---------------------------
+
+These bindings are a CowSQL-oriented fork of Canonical's
+[go-dqlite](https://github.com/canonical/go-dqlite) ones, which were originally
+written by CowSQL's author
+[himself](https://github.com/canonical/go-dqlite/commits?author=freeekanayaka)
+while working at Canonical.
 
 Usage
 -----
 
-The best way to understand how to use the ```go-dqlite``` package is probably by
+The best way to understand how to use the ```go-cowsql``` package is probably by
 looking at the source code of the [demo
-program](https://github.com/canonical/go-dqlite/blob/master/cmd/dqlite-demo/dqlite-demo.go) and
+program](https://github.com/cowsql/go-cowsql/blob/master/cmd/cowsql-demo/cowsql-demo.go) and
 use it as example.
 
 In general your application will use code such as:
@@ -39,55 +48,55 @@ if _, err := db.Exec("CREATE TABLE my_table (n INT)"); err != nil
 Build
 -----
 
-In order to use the go-dqlite package in your application, you'll need to have
-the [dqlite](https://github.com/canonical/dqlite) C library installed on your
+In order to use the go-cowsql package in your application, you'll need to have
+the [CowSQL](https://github.com/cowsql/cowsql) C library installed on your
 system, along with its dependencies.
 
-By default, go-dqlite's `client` module supports storing a cache of the
+By default, go-cowsql's `client` module supports storing a cache of the
 cluster's state in a SQLite database, locally on each cluster member. (This is
-not to be confused with any SQLite databases that are managed by dqlite.) In
+not to be confused with any SQLite databases that are managed by CowSQL.) In
 order to do this, it imports https://github.com/mattn/go-sqlite3, and so you
 can use the `libsqlite3` build tag to control whether go-sqlite3 links to a
 system libsqlite3 or builds its own. You can also disable support for SQLite
-node stores entirely with the `nosqlite3` build tag (unique to go-dqlite). If
+node stores entirely with the `nosqlite3` build tag (unique to go-cowsql). If
 you pass this tag, your application will not link *directly* to libsqlite3 (but
-it will still link it *indirectly* via libdqlite, unless you've dropped the
-sqlite3.c amalgamation into the dqlite build).
+it will still link it *indirectly* via libcowsql, unless you've dropped the
+sqlite3.c amalgamation into the CowSQL build).
 
 Documentation
 -------------
 
-The documentation for this package can be found on [pkg.go.dev](https://pkg.go.dev/github.com/canonical/go-dqlite).
+The documentation for this package can be found on [pkg.go.dev](https://pkg.go.dev/github.com/cowsql/go-cowsql).
 
 Demo
 ----
 
-To see dqlite in action, either install the Debian package from the PPA:
+To see CowSQL in action, either install the Debian package from the PPA:
 
 ```bash
-sudo add-apt-repository -y ppa:dqlite/dev
-sudo apt install dqlite-tools libdqlite-dev
+sudo add-apt-repository -y ppa:cowsql/master
+sudo apt install cowsql libcowsql-dev
 ```
 
-or build the dqlite C library and its dependencies from source, as described
-[here](https://github.com/canonical/dqlite#build), and then run:
+or build the CowSQL C library and its dependencies from source, as described
+[here](https://github.com/cowsql/cowsql#build), and then run:
 
 ```
-go install -tags libsqlite3 ./cmd/dqlite-demo
+go install -tags libsqlite3 ./cmd/cowsql-demo
 ```
 
 from the top-level directory of this repository.
 
-This builds a demo dqlite application, which exposes a simple key/value store
+This builds a demo CowSQL application, which exposes a simple key/value store
 over an HTTP API.
 
-Once the `dqlite-demo` binary is installed (normally under `~/go/bin` or
+Once the `cowsql-demo` binary is installed (normally under `~/go/bin` or
 `/usr/bin/`), start three nodes of the demo application:
 
 ```bash
-dqlite-demo --api 127.0.0.1:8001 --db 127.0.0.1:9001 &
-dqlite-demo --api 127.0.0.1:8002 --db 127.0.0.1:9002 --join 127.0.0.1:9001 &
-dqlite-demo --api 127.0.0.1:8003 --db 127.0.0.1:9003 --join 127.0.0.1:9001 &
+cowsql-demo --api 127.0.0.1:8001 --db 127.0.0.1:9001 &
+cowsql-demo --api 127.0.0.1:8002 --db 127.0.0.1:9002 --join 127.0.0.1:9001 &
+cowsql-demo --api 127.0.0.1:8003 --db 127.0.0.1:9003 --join 127.0.0.1:9001 &
 ```
 
 The `--api` flag tells the demo program where to expose its HTTP API.
@@ -122,21 +131,21 @@ kill -TERM %1; curl http://127.0.0.1:8002/my-key
 Shell
 ------
 
-A basic SQLite-like dqlite shell is available in the `dqlite-tools` package or
+A basic SQLite-like CowSQL shell is available in the `cowsql-tools` package or
 can be built with:
 ```
-go install -tags libsqlite3 ./cmd/dqlite
+go install -tags libsqlite3 ./cmd/cowsql
 ```
 ```
 Usage:
-  dqlite -s <servers> <database> [command] [flags]
+  cowsql -s <servers> <database> [command] [flags]
 ```
 
-Example usage in the case of the `dqlite-demo` example listed above:
+Example usage in the case of the `cowsql-demo` example listed above:
 ```
-dqlite -s 127.0.0.1:9001 demo
+cowsql -s 127.0.0.1:9001 demo
 
-dqlite> SELECT * FROM model;
+cowsql> SELECT * FROM model;
 my-key|my-value
 ```
 
