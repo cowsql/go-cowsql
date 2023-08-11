@@ -1,9 +1,9 @@
-go-cowsql [![CI tests](https://github.com/cowsql/go-cowsql/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cowsql/go-cowsql/actions/workflows/build-and-test.yml) [![Coverage Status](https://coveralls.io/repos/github/cowsql/go-cowsql/badge.svg?branch=master)](https://coveralls.io/github/cowsql/go-cowsql?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/cowsql/go-cowsql)](https://goreportcard.com/report/github.com/cowsql/go-cowsql) [![GoDoc](https://godoc.org/github.com/cowsql/go-cowsql?status.svg)](https://godoc.org/github.com/cowsql/go-cowsql)
+go-cowsql [![CI tests](https://github.com/cowsql/go-cowsql/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/cowsql/go-cowsql/actions/workflows/build-and-test.yml) [![Coverage Status](https://coveralls.io/repos/github/cowsql/go-cowsql/badge.svg?branch=main)](https://coveralls.io/github/cowsql/go-cowsql?branch=main) [![Go Report Card](https://goreportcard.com/badge/github.com/cowsql/go-cowsql)](https://goreportcard.com/report/github.com/cowsql/go-cowsql) [![GoDoc](https://godoc.org/github.com/cowsql/go-cowsql?status.svg)](https://godoc.org/github.com/cowsql/go-cowsql)
 ======
 
 This repository provides the `go-cowsql` Go package, containing bindings for the
 [cowsql](https://github.com/cowsql/cowsql) C library and a pure-Go
-client for the cowsql wire [protocol](https://github.com/cowsql/cowsql/blob/master/doc/protocol.md).
+client for the cowsql wire [protocol](https://github.com/cowsql/cowsql/blob/main/doc/protocol.md).
 
 Fork of Canonical go-dqlite
 ---------------------------
@@ -19,7 +19,7 @@ Usage
 
 The best way to understand how to use the ```go-cowsql``` package is probably by
 looking at the source code of the [demo
-program](https://github.com/cowsql/go-cowsql/blob/master/cmd/cowsql-demo/cowsql-demo.go) and
+program](https://github.com/cowsql/go-cowsql/blob/main/cmd/cowsql-demo/cowsql-demo.go) and
 use it as example.
 
 In general your application will use code such as:
