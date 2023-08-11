@@ -2,15 +2,15 @@ go-cowsql [![CI tests](https://github.com/cowsql/go-cowsql/actions/workflows/bui
 ======
 
 This repository provides the `go-cowsql` Go package, containing bindings for the
-[CowSQL](https://github.com/cowsql/cowsql) C library and a pure-Go
+[cowsql](https://github.com/cowsql/cowsql) C library and a pure-Go
 client for the cowsql wire [protocol](https://github.com/cowsql/cowsql/blob/master/doc/protocol.md).
 
 Fork of Canonical go-dqlite
 ---------------------------
 
-These bindings are a CowSQL-oriented fork of Canonical's
+These bindings are a cowsql-oriented fork of Canonical's
 [go-dqlite](https://github.com/canonical/go-dqlite) ones, which were originally
-written by CowSQL's author
+written by cowsql's author
 [himself](https://github.com/canonical/go-dqlite/commits?author=freeekanayaka)
 while working at Canonical.
 
@@ -49,19 +49,19 @@ Build
 -----
 
 In order to use the go-cowsql package in your application, you'll need to have
-the [CowSQL](https://github.com/cowsql/cowsql) C library installed on your
+the [cowsql](https://github.com/cowsql/cowsql) C library installed on your
 system, along with its dependencies.
 
 By default, go-cowsql's `client` module supports storing a cache of the
 cluster's state in a SQLite database, locally on each cluster member. (This is
-not to be confused with any SQLite databases that are managed by CowSQL.) In
+not to be confused with any SQLite databases that are managed by cowsql.) In
 order to do this, it imports https://github.com/mattn/go-sqlite3, and so you
 can use the `libsqlite3` build tag to control whether go-sqlite3 links to a
 system libsqlite3 or builds its own. You can also disable support for SQLite
 node stores entirely with the `nosqlite3` build tag (unique to go-cowsql). If
 you pass this tag, your application will not link *directly* to libsqlite3 (but
 it will still link it *indirectly* via libcowsql, unless you've dropped the
-sqlite3.c amalgamation into the CowSQL build).
+sqlite3.c amalgamation into the cowsql build).
 
 Documentation
 -------------
@@ -71,14 +71,14 @@ The documentation for this package can be found on [pkg.go.dev](https://pkg.go.d
 Demo
 ----
 
-To see CowSQL in action, either install the Debian package from the PPA:
+To see cowsql in action, either install the Debian package from the PPA:
 
 ```bash
 sudo add-apt-repository -y ppa:cowsql/master
 sudo apt install cowsql libcowsql-dev
 ```
 
-or build the CowSQL C library and its dependencies from source, as described
+or build the cowsql C library and its dependencies from source, as described
 [here](https://github.com/cowsql/cowsql#build), and then run:
 
 ```
@@ -87,7 +87,7 @@ go install -tags libsqlite3 ./cmd/cowsql-demo
 
 from the top-level directory of this repository.
 
-This builds a demo CowSQL application, which exposes a simple key/value store
+This builds a demo cowsql application, which exposes a simple key/value store
 over an HTTP API.
 
 Once the `cowsql-demo` binary is installed (normally under `~/go/bin` or
@@ -131,7 +131,7 @@ kill -TERM %1; curl http://127.0.0.1:8002/my-key
 Shell
 ------
 
-A basic SQLite-like CowSQL shell is available in the `cowsql-tools` package or
+A basic SQLite-like cowsql shell is available in the `cowsql-tools` package or
 can be built with:
 ```
 go install -tags libsqlite3 ./cmd/cowsql
