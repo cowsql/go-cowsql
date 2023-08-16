@@ -26,7 +26,7 @@ jobs:
 
     - name: Setup dependencies
       run: |
-        sudo add-apt-repository ppa:cowsql/master -y
+        sudo add-apt-repository ppa:cowsql/main -y
         sudo apt update
         sudo apt install -y golint libsqlite3-dev libuv1-dev liblz4-dev libraft-dev libcowsql-dev
         go get github.com/go-playground/overalls
