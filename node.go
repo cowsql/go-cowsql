@@ -69,17 +69,6 @@ func WithSnapshotParams(params SnapshotParams) Option {
 	}
 }
 
-// WithDiskMode enables cowsql disk-mode on the node.
-// WARNING: This is experimental API, use with caution
-// and prepare for data loss.
-// UNSTABLE: Behavior can change in future.
-// NOT RECOMMENDED for production use-cases, use at own risk.
-func WithDiskMode(disk bool) Option {
-	return func(options *options) {
-		options.DiskMode = disk
-	}
-}
-
 // WithAutoRecovery enables or disables auto-recovery of persisted data
 // at startup for this node.
 //
@@ -139,12 +128,6 @@ func New(id uint64, address string, dir string, options ...Option) (*Node, error
 			return nil, err
 		}
 	}
-	if o.DiskMode {
-		if err := server.EnableDiskMode(); err != nil {
-			cancel()
-			return nil, err
-		}
-	}
 	if err := server.SetAutoRecovery(o.AutoRecovery); err != nil {
 		cancel()
 		return nil, err
@@ -188,7 +171,6 @@ type options struct {
 	NetworkLatency uint64
 	FailureDomain  uint64
 	SnapshotParams bindings.SnapshotParams
-	DiskMode       bool
 	AutoRecovery   bool
 }
 
@@ -249,8 +231,7 @@ func ReconfigureMembershipExt(dir string, cluster []NodeInfo) error {
 // Create a options object with sane defaults.
 func defaultOptions() *options {
 	return &options{
-		DialFunc: client.DefaultDialFunc,
-		DiskMode: false, // Be explicit about not enabling disk-mode by default.
+		DialFunc:     client.DefaultDialFunc,
 		AutoRecovery: true,
 	}
 }

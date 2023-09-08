@@ -3,7 +3,6 @@
 GO=${GO:-go}
 ASAN=${ASAN:-}
 VERBOSE=${VERBOSE:-0}
-DISK=${DISK:-0}
 
 $GO build -tags libsqlite3 $ASAN ./cmd/cowsql-demo/
 
@@ -14,17 +13,12 @@ start_node() {
     pidfile="${DIR}/pid.${n}"
     join="${2}"
     verbose=""
-    disk=""
 
     if [ "$VERBOSE" -eq 1 ]; then
         verbose="--verbose"
     fi
 
-    if [ "$DISK" -eq 1 ]; then
-        disk="--disk"
-    fi
-
-    ./cowsql-demo --dir "$DIR" --api=127.0.0.1:800"${n}" --db=127.0.0.1:900"${n}" "$join" $verbose $disk &
+    ./cowsql-demo --dir "$DIR" --api=127.0.0.1:800"${n}" --db=127.0.0.1:900"${n}" "$join" $verbose &
     echo "${!}" > "${pidfile}"
 
     i=0

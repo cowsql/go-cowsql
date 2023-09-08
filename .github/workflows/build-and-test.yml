@@ -12,8 +12,6 @@ jobs:
           - 1.20.x
         os:
           - ubuntu-22.04
-        disk:
-          - 0
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout code
@@ -42,9 +40,9 @@ jobs:
         export GO_COWSQL_MULTITHREAD=1
         go test -v -race -coverprofile=coverage.out ./...
         go test -v -tags nosqlite3 ./...
-        VERBOSE=1 DISK=${{ matrix.disk }} ./test/cowsql-demo.sh
-        VERBOSE=1 DISK=${{ matrix.disk }} ./test/roles.sh
-        VERBOSE=1 DISK=${{ matrix.disk }} ./test/recover.sh
+        VERBOSE=1 ./test/cowsql-demo.sh
+        VERBOSE=1 ./test/roles.sh
+        VERBOSE=1 ./test/recover.sh
 
     - name: Coverage
       uses: shogo82148/actions-goveralls@v1
@@ -57,11 +55,10 @@ jobs:
         GO_COWSQL_MULTITHREAD: 1
       run: |
         go install -tags libsqlite3 github.com/cowsql/go-cowsql/cmd/cowsql-benchmark
-        diskmode=$(if [ ${{ matrix.disk }} -eq 1 ]; then echo -n "--disk"; fi)
-        cowsql-benchmark --db 127.0.0.1:9001 --driver $diskmode --cluster 127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003 --workload kvreadwrite &
+        cowsql-benchmark --db 127.0.0.1:9001 --driver --cluster 127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003 --workload kvreadwrite &
         masterpid=$!
-        cowsql-benchmark --db 127.0.0.1:9002 $diskmode --join 127.0.0.1:9001 &
-        cowsql-benchmark --db 127.0.0.1:9003 $diskmode --join 127.0.0.1:9001 &
+        cowsql-benchmark --db 127.0.0.1:9002 --join 127.0.0.1:9001 &
+        cowsql-benchmark --db 127.0.0.1:9003 --join 127.0.0.1:9001 &
         wait $masterpid
         echo "Write results:"
         head -n 5 /tmp/cowsql-benchmark/127.0.0.1:9001/results/0-exec-*

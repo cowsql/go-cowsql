@@ -871,19 +871,6 @@ func TestOpen(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// Open a database with disk-mode on a fresh one-node cluster.
-func TestOpenDisk(t *testing.T) {
-	app, cleanup := newApp(t, app.WithAddress("127.0.0.1:9000"), app.WithDiskMode(true))
-	defer cleanup()
-
-	db, err := app.Open(context.Background(), "test")
-	require.NoError(t, err)
-	defer db.Close()
-
-	_, err = db.ExecContext(context.Background(), "CREATE TABLE foo(n INT)")
-	assert.NoError(t, err)
-}
-
 // Test some setup options
 func TestOptions(t *testing.T) {
 	options := []app.Option{
@@ -1042,7 +1029,6 @@ func TestExternalConnWithTCP(t *testing.T) {
 	assert.Equal(t, client.Voter, cluster[2].Role)
 }
 
-
 // TestExternalPipe creates a 3-member cluster using net.Pipe
 // and ensures the cluster is successfully created, and that the connection is
 // handled manually.
@@ -1062,7 +1048,7 @@ func TestExternalConnWithPipe(t *testing.T) {
 
 	dialFunc := func(_ context.Context, addr string) (net.Conn, error) {
 		client, server := net.Pipe()
-		
+
 		dialChannels[addr] <- server
 
 		return client, nil
@@ -1221,8 +1207,8 @@ func Test_TxRowsAffected(t *testing.T) {
 CREATE TABLE test (
 	id            TEXT PRIMARY KEY,
 	value         INT
-);`);
-	require.NoError(t, err);
+);`)
+	require.NoError(t, err)
 
 	// Insert watermark
 	err = tx(context.Background(), db, func(ctx context.Context, tx *sql.Tx) error {

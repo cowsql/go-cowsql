@@ -5,12 +5,6 @@ on:
 
 jobs:
   benchmark:
-    strategy:
-      fail-fast: false
-      matrix:
-        disk:
-          - 1
-          - 0
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout code
@@ -34,8 +28,7 @@ jobs:
       run: |
         go get -t -tags libsqlite3 ./...
         go install -tags libsqlite3 github.com/cowsql/go-cowsql/cmd/cowsql-benchmark
-        diskmode=$(if [ ${{ matrix.disk }} -eq 1 ]; then echo -n "--disk"; fi)
-        cowsql-benchmark --db 127.0.0.1:9001 --duration 3600 --driver $diskmode --cluster 127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003 --workload kvreadwrite &
+        cowsql-benchmark --db 127.0.0.1:9001 --duration 3600 --driver --cluster 127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003 --workload kvreadwrite &
         masterpid=$!
         cowsql-benchmark --db 127.0.0.1:9002 --join 127.0.0.1:9001 &
         cowsql-benchmark --db 127.0.0.1:9003 --join 127.0.0.1:9001 &
