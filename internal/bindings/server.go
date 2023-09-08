@@ -175,14 +175,6 @@ func (s *Node) SetFailureDomain(code uint64) error {
 	return nil
 }
 
-func (s *Node) EnableDiskMode() error {
-	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
-	if rc := C.cowsql_node_enable_disk_mode(server); rc != 0 {
-		return fmt.Errorf("failed to set disk mode")
-	}
-	return nil
-}
-
 func (s *Node) SetAutoRecovery(on bool) error {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	if rc := C.cowsql_node_set_auto_recovery(server, C.bool(on)); rc != 0 {

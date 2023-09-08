@@ -193,7 +193,6 @@ func New(dir string, options ...Option) (app *App, err error) {
 		cowsql.WithFailureDomain(o.FailureDomain),
 		cowsql.WithNetworkLatency(o.NetworkLatency),
 		cowsql.WithSnapshotParams(o.SnapshotParams),
-		cowsql.WithDiskMode(o.DiskMode),
 		cowsql.WithAutoRecovery(o.AutoRecovery),
 	)
 	if err != nil {

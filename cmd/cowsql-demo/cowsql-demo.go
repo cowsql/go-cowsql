@@ -27,7 +27,6 @@ func main() {
 	var join *[]string
 	var dir string
 	var verbose bool
-	var diskMode bool
 	var crt string
 	var key string
 
@@ -49,8 +48,7 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 				log.Printf(fmt.Sprintf("%s: %s: %s\n", api, l.String(), format), a...)
 			}
 
-			options := []app.Option{app.WithAddress(db), app.WithCluster(*join), app.WithLogFunc(logFunc),
-				app.WithDiskMode(diskMode)}
+			options := []app.Option{app.WithAddress(db), app.WithCluster(*join), app.WithLogFunc(logFunc)}
 
 			// Set TLS options
 			if (crt != "" && key == "") || (key != "" && crt == "") {
@@ -144,7 +142,6 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 	join = flags.StringSliceP("join", "j", nil, "database addresses of existing nodes")
 	flags.StringVarP(&dir, "dir", "D", "/tmp/cowsql-demo", "data directory")
 	flags.BoolVarP(&verbose, "verbose", "v", false, "verbose logging")
-	flags.BoolVar(&diskMode, "disk", defaultDiskMode, "Warning: Unstable, Experimental. Set this flag to enable cowsql's disk-mode.")
 	flags.StringVarP(&crt, "cert", "c", "", "public TLS cert")
 	flags.StringVarP(&key, "key", "k", "", "private TLS key")
 
@@ -157,8 +154,7 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 }
 
 const (
-	schema          = "CREATE TABLE IF NOT EXISTS model (key TEXT, value TEXT, UNIQUE(key))"
-	query           = "SELECT value FROM model WHERE key = ?"
-	update          = "INSERT OR REPLACE INTO model(key, value) VALUES(?, ?)"
-	defaultDiskMode = false
+	schema = "CREATE TABLE IF NOT EXISTS model (key TEXT, value TEXT, UNIQUE(key))"
+	query  = "SELECT value FROM model WHERE key = ?"
+	update = "INSERT OR REPLACE INTO model(key, value) VALUES(?, ?)"
 )
