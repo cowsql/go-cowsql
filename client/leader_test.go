@@ -8,8 +8,14 @@ import (
 
 	cowsql "github.com/cowsql/go-cowsql"
 	"github.com/cowsql/go-cowsql/client"
-	"github.com/stretchr/testify/require"
 )
+
+func requireNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestMembership(t *testing.T) {
 	n := 3
@@ -22,12 +28,12 @@ func TestMembership(t *testing.T) {
 		dir, cleanup := newDir(t)
 		defer cleanup()
 		node, err := cowsql.New(id, address, dir, cowsql.WithBindAddress(address))
-		require.NoError(t, err)
+		requireNoError(t, err)
 		nodes[i] = node
 		infos[i].ID = id
 		infos[i].Address = address
 		err = node.Start()
-		require.NoError(t, err)
+		requireNoError(t, err)
 		defer node.Close()
 	}
 
@@ -38,9 +44,9 @@ func TestMembership(t *testing.T) {
 	store.Set(context.Background(), []client.NodeInfo{infos[0]})
 
 	client, err := client.FindLeader(ctx, store)
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer client.Close()
 
 	err = client.Add(ctx, infos[1])
-	require.NoError(t, err)
+	requireNoError(t, err)
 }

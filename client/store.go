@@ -2,12 +2,11 @@ package client
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"sync"
 
+	"github.com/goccy/go-yaml"
 	"github.com/google/renameio"
-	"gopkg.in/yaml.v2"
 
 	"github.com/cowsql/go-cowsql/internal/protocol"
 )
@@ -45,7 +44,7 @@ func NewYamlNodeStore(path string) (*YamlNodeStore, error) {
 			return nil, err
 		}
 	} else {
-		data, err := ioutil.ReadFile(path)
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +81,7 @@ func (s *YamlNodeStore) Set(ctx context.Context, servers []NodeInfo) error {
 		return err
 	}
 
-	if err := renameio.WriteFile(s.path, data, 0600); err != nil {
+	if err := renameio.WriteFile(s.path, data, 0o600); err != nil {
 		return err
 	}
 

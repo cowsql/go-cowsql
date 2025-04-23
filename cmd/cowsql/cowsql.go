@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -69,7 +68,7 @@ func main() {
 					return err
 				}
 
-				data, err := ioutil.ReadFile(crt)
+				data, err := os.ReadFile(crt)
 				if err != nil {
 					return err
 				}

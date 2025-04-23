@@ -27,7 +27,7 @@ import (
 // then load the resulting key pair and pool with:
 //
 //   cert, _ := tls.LoadX509KeyPair("cluster.crt", "cluster.key")
-//   data, _ := ioutil.ReadFile("cluster.crt")
+//   data, _ := os.ReadFile("cluster.crt")
 //   pool := x509.NewCertPool()
 //   pool.AppendCertsFromPEM(data)
 //

@@ -2,14 +2,33 @@ package protocol_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/cowsql/go-cowsql/internal/protocol"
 	"github.com/cowsql/go-cowsql/logging"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
+
+func requireNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertEqual(t *testing.T, expected, actual any) {
+	t.Helper()
+	if expected == nil || actual == nil {
+		if expected != actual {
+			t.Fatal(expected, actual)
+		}
+	}
+
+	if !reflect.DeepEqual(expected, actual) {
+		t.Fatal(expected, actual)
+	}
+}
 
 // func TestProtocol_Heartbeat(t *testing.T) {
 // 	c, cleanup := newProtocol(t)
@@ -22,10 +41,10 @@ import (
 // 	makeCall(t, c, &request, &response)
 
 // 	servers, err := protocol.DecodeNodes(&response)
-// 	require.NoError(t, err)
+// 	requireNoError(t, err)
 
 // 	assert.Len(t, servers, 2)
-// 	assert.Equal(t, client.Nodes{
+// 	assertEqual(t, client.Nodes{
 // 		{ID: uint64(1), Address: "1.2.3.4:666"},
 // 		{ID: uint64(2), Address: "5.6.7.8:666"}},
 // 		servers)
@@ -43,7 +62,7 @@ func TestProtocol_RequestWithDynamicBuffer(t *testing.T) {
 	makeCall(t, p, &request, &response)
 
 	id, err := protocol.DecodeDb(&response)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	sql := `
 CREATE TABLE foo (n INT);
@@ -67,17 +86,17 @@ func TestProtocol_Prepare(t *testing.T) {
 	makeCall(t, c, &request, &response)
 
 	db, err := protocol.DecodeDb(&response)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	protocol.EncodePrepare(&request, uint64(db), "CREATE TABLE test (n INT)")
 
 	makeCall(t, c, &request, &response)
 
 	_, stmt, params, err := protocol.DecodeStmt(&response)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, uint32(0), stmt)
-	assert.Equal(t, uint64(0), params)
+	assertEqual(t, uint32(0), stmt)
+	assertEqual(t, uint64(0), params)
 }
 
 /*
@@ -89,13 +108,13 @@ func TestProtocol_Exec(t *testing.T) {
 	defer cancel()
 
 	db, err := client.Open(ctx, "test.db", "volatile")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := client.Prepare(ctx, db.ID, "CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = client.Exec(ctx, db.ID, stmt.ID)
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 func TestProtocol_Query(t *testing.T) {
@@ -106,36 +125,36 @@ func TestProtocol_Query(t *testing.T) {
 	defer cancel()
 
 	db, err := client.Open(ctx, "test.db", "volatile")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	start := time.Now()
 
 	stmt, err := client.Prepare(ctx, db.ID, "CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = client.Exec(ctx, db.ID, stmt.ID)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = client.Finalize(ctx, db.ID, stmt.ID)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err = client.Prepare(ctx, db.ID, "INSERT INTO test VALUES(1)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = client.Exec(ctx, db.ID, stmt.ID)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = client.Finalize(ctx, db.ID, stmt.ID)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err = client.Prepare(ctx, db.ID, "SELECT n FROM test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = client.Query(ctx, db.ID, stmt.ID)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = client.Finalize(ctx, db.ID, stmt.ID)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	fmt.Printf("time %s\n", time.Since(start))
 }
@@ -158,7 +177,7 @@ func newProtocol(t *testing.T) (*protocol.Protocol, func()) {
 
 	client, err := connector.Connect(ctx)
 
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	cleanup := func() {
 		client.Close()
@@ -174,7 +193,7 @@ func makeCall(t *testing.T, p *protocol.Protocol, request, response *protocol.Me
 	defer cancel()
 
 	err := p.Call(ctx, request, response)
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 // Return a new message pair to be used as request and response.

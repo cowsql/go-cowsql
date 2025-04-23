@@ -8,12 +8,12 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -21,9 +21,60 @@ import (
 	"github.com/cowsql/go-cowsql"
 	"github.com/cowsql/go-cowsql/app"
 	"github.com/cowsql/go-cowsql/client"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
+
+var (
+	requireNoError = assertNoError
+	requireEqual   = assertEqual
+	requireTrue    = assertTrue
+)
+
+func requireNotNil(t *testing.T, x any) {
+	t.Helper()
+	if x == nil {
+		t.Fatal()
+	}
+}
+
+func assertTrue(t *testing.T, ok bool) {
+	t.Helper()
+	if !ok {
+		t.Fatal(ok)
+	}
+}
+
+func assertNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertEqual(t *testing.T, expected, actual any) {
+	t.Helper()
+	if expected == nil || actual == nil {
+		if expected != actual {
+			t.Fatal(expected, actual)
+		}
+	}
+
+	if !reflect.DeepEqual(expected, actual) {
+		t.Fatal(expected, actual)
+	}
+}
+
+func assertNotEqual(t *testing.T, expected, actual any) {
+	t.Helper()
+	if expected == nil || actual == nil {
+		if expected == actual {
+			t.Fatal(expected, actual)
+		}
+	}
+
+	if reflect.DeepEqual(expected, actual) {
+		t.Fatal(expected, actual)
+	}
+}
 
 // Create a pristine bootstrap node with default value.
 func TestNew_PristineDefault(t *testing.T) {
@@ -42,21 +93,21 @@ func TestNew_PristineJoiner(t *testing.T) {
 	app2, cleanup := newApp(t, app.WithAddress(addr2), app.WithCluster([]string{addr1}))
 	defer cleanup()
 
-	require.NoError(t, app2.Ready(context.Background()))
+	requireNoError(t, app2.Ready(context.Background()))
 
 	// The joining node to appear in the cluster list.
 	cli, err := app1.Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, addr1, cluster[0].Address)
-	assert.Equal(t, addr2, cluster[1].Address)
+	requireNoError(t, err)
+	assertEqual(t, addr1, cluster[0].Address)
+	assertEqual(t, addr2, cluster[1].Address)
 
 	// Initially the node joins as spare.
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Spare, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Spare, cluster[1].Role)
 }
 
 // Restart a node that had previously joined the cluster successfully.
@@ -67,19 +118,19 @@ func TestNew_JoinerRestart(t *testing.T) {
 	app1, cleanup := newApp(t, app.WithAddress(addr1))
 	defer cleanup()
 
-	require.NoError(t, app1.Ready(context.Background()))
+	requireNoError(t, app1.Ready(context.Background()))
 
 	dir2, cleanup := newDir(t)
 	defer cleanup()
 
 	app2, cleanup := newAppWithDir(t, dir2, app.WithAddress(addr2), app.WithCluster([]string{addr1}))
-	require.NoError(t, app2.Ready(context.Background()))
+	requireNoError(t, app2.Ready(context.Background()))
 	cleanup()
 
 	app2, cleanup = newAppWithDir(t, dir2, app.WithAddress(addr2))
 	defer cleanup()
 
-	require.NoError(t, app2.Ready(context.Background()))
+	requireNoError(t, app2.Ready(context.Background()))
 }
 
 // The second joiner promotes itself and also the first joiner.
@@ -94,27 +145,27 @@ func TestNew_SecondJoiner(t *testing.T) {
 	app2, cleanup := newApp(t, app.WithAddress(addr2), app.WithCluster([]string{addr1}))
 	defer cleanup()
 
-	require.NoError(t, app2.Ready(context.Background()))
+	requireNoError(t, app2.Ready(context.Background()))
 
 	app3, cleanup := newApp(t, app.WithAddress(addr3), app.WithCluster([]string{addr1}))
 	defer cleanup()
 
-	require.NoError(t, app3.Ready(context.Background()))
+	requireNoError(t, app3.Ready(context.Background()))
 
 	cli, err := app1.Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, addr1, cluster[0].Address)
-	assert.Equal(t, addr2, cluster[1].Address)
-	assert.Equal(t, addr3, cluster[2].Address)
+	assertEqual(t, addr1, cluster[0].Address)
+	assertEqual(t, addr2, cluster[1].Address)
+	assertEqual(t, addr3, cluster[2].Address)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
 }
 
 // The third joiner gets the stand-by role.
@@ -131,23 +182,23 @@ func TestNew_ThirdJoiner(t *testing.T) {
 		app, cleanup := newApp(t, options...)
 		defer cleanup()
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps = append(apps, app)
 
 	}
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
 }
 
 // The fourth joiner gets the stand-by role.
@@ -164,24 +215,24 @@ func TestNew_FourthJoiner(t *testing.T) {
 		app, cleanup := newApp(t, options...)
 		defer cleanup()
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps = append(apps, app)
 
 	}
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
-	assert.Equal(t, client.StandBy, cluster[4].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.StandBy, cluster[4].Role)
 }
 
 // The fifth joiner gets the stand-by role.
@@ -198,25 +249,25 @@ func TestNew_FifthJoiner(t *testing.T) {
 		app, cleanup := newApp(t, options...)
 		defer cleanup()
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps = append(apps, app)
 
 	}
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
-	assert.Equal(t, client.StandBy, cluster[4].Role)
-	assert.Equal(t, client.StandBy, cluster[5].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.StandBy, cluster[4].Role)
+	assertEqual(t, client.StandBy, cluster[5].Role)
 }
 
 // The sixth joiner gets the spare role.
@@ -233,26 +284,26 @@ func TestNew_SixthJoiner(t *testing.T) {
 		app, cleanup := newApp(t, options...)
 		defer cleanup()
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps = append(apps, app)
 
 	}
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
-	assert.Equal(t, client.StandBy, cluster[4].Role)
-	assert.Equal(t, client.StandBy, cluster[5].Role)
-	assert.Equal(t, client.Spare, cluster[6].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.StandBy, cluster[4].Role)
+	assertEqual(t, client.StandBy, cluster[5].Role)
+	assertEqual(t, client.Spare, cluster[6].Role)
 }
 
 // Transfer voting rights to another online node.
@@ -270,32 +321,32 @@ func TestHandover_Voter(t *testing.T) {
 		app, cleanup := newApp(t, options...)
 		defer cleanup()
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 	}
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
 
-	require.NoError(t, apps[2].Handover(context.Background()))
+	requireNoError(t, apps[2].Handover(context.Background()))
 
 	cluster, err = cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Spare, cluster[2].Role)
-	assert.Equal(t, client.Voter, cluster[3].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Spare, cluster[2].Role)
+	assertEqual(t, client.Voter, cluster[3].Role)
 }
 
 // In a two-node cluster only one of them is a voter. When Handover() is called
@@ -314,23 +365,23 @@ func TestHandover_TwoNodes(t *testing.T) {
 		app, cleanup := newApp(t, options...)
 		defer cleanup()
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 	}
 
 	err := apps[0].Handover(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	cli, err := apps[1].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Spare, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Spare, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
 }
 
 // Transfer voting rights to another online node. Failure domains are taken
@@ -352,29 +403,29 @@ func TestHandover_VoterHonorFailureDomain(t *testing.T) {
 		app, cleanup := newApp(t, options...)
 		defer cleanup()
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 	}
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, apps[2].Handover(context.Background()))
+	requireNoError(t, apps[2].Handover(context.Background()))
 
 	cluster, err = cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Spare, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
-	assert.Equal(t, client.StandBy, cluster[4].Role)
-	assert.Equal(t, client.Voter, cluster[5].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Spare, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.StandBy, cluster[4].Role)
+	assertEqual(t, client.Voter, cluster[5].Role)
 }
 
 // Handover with a sinle node.
@@ -383,12 +434,12 @@ func TestHandover_SingleNode(t *testing.T) {
 	defer cleanup()
 
 	app, err := app.New(dir, app.WithAddress("127.0.0.1:9001"))
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, app.Ready(context.Background()))
+	requireNoError(t, app.Ready(context.Background()))
 
-	require.NoError(t, app.Handover(context.Background()))
-	require.NoError(t, app.Close())
+	requireNoError(t, app.Handover(context.Background()))
+	requireNoError(t, app.Close())
 }
 
 // Exercise a sequential graceful shutdown of a 3-node cluster.
@@ -409,29 +460,29 @@ func TestHandover_GracefulShutdown(t *testing.T) {
 		}
 
 		app, err := app.New(dir, options...)
-		require.NoError(t, err)
+		requireNoError(t, err)
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 	}
 
 	db, err := sql.Open(apps[0].Driver(), "test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = db.Exec("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, db.Close())
+	requireNoError(t, db.Close())
 
-	require.NoError(t, apps[0].Handover(context.Background()))
-	require.NoError(t, apps[0].Close())
+	requireNoError(t, apps[0].Handover(context.Background()))
+	requireNoError(t, apps[0].Close())
 
-	require.NoError(t, apps[1].Handover(context.Background()))
-	require.NoError(t, apps[1].Close())
+	requireNoError(t, apps[1].Handover(context.Background()))
+	requireNoError(t, apps[1].Close())
 
-	require.NoError(t, apps[2].Handover(context.Background()))
-	require.NoError(t, apps[2].Close())
+	requireNoError(t, apps[2].Handover(context.Background()))
+	requireNoError(t, apps[2].Close())
 }
 
 // Transfer the stand-by role to another online node.
@@ -449,38 +500,38 @@ func TestHandover_StandBy(t *testing.T) {
 		app, cleanup := newApp(t, options...)
 		defer cleanup()
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 	}
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
-	assert.Equal(t, client.StandBy, cluster[4].Role)
-	assert.Equal(t, client.StandBy, cluster[5].Role)
-	assert.Equal(t, client.Spare, cluster[6].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.StandBy, cluster[4].Role)
+	assertEqual(t, client.StandBy, cluster[5].Role)
+	assertEqual(t, client.Spare, cluster[6].Role)
 
-	require.NoError(t, apps[4].Handover(context.Background()))
+	requireNoError(t, apps[4].Handover(context.Background()))
 
 	cluster, err = cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
-	assert.Equal(t, client.Spare, cluster[4].Role)
-	assert.Equal(t, client.StandBy, cluster[5].Role)
-	assert.Equal(t, client.StandBy, cluster[6].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.Spare, cluster[4].Role)
+	assertEqual(t, client.StandBy, cluster[5].Role)
+	assertEqual(t, client.StandBy, cluster[6].Role)
 }
 
 // Transfer leadership and voting rights to another node.
@@ -498,38 +549,38 @@ func TestHandover_TransferLeadership(t *testing.T) {
 		app, cleanup := newApp(t, options...)
 		defer cleanup()
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 	}
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	leader, err := cli.Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NotNil(t, leader)
-	require.Equal(t, apps[0].ID(), leader.ID)
-	require.NoError(t, apps[0].Handover(context.Background()))
+	requireNotNil(t, leader)
+	requireEqual(t, apps[0].ID(), leader.ID)
+	requireNoError(t, apps[0].Handover(context.Background()))
 
 	cli, err = apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	leader, err = cli.Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.NotEqual(t, apps[0].ID(), leader.ID)
+	assertNotEqual(t, apps[0].ID(), leader.ID)
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Spare, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.Voter, cluster[3].Role)
+	assertEqual(t, client.Spare, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.Voter, cluster[3].Role)
 }
 
 // If a voter goes offline, another node takes its place.
@@ -550,7 +601,7 @@ func TestRolesAdjustment_ReplaceVoter(t *testing.T) {
 
 		app, cleanup := newApp(t, options...)
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 		cleanups[i] = cleanup
@@ -566,16 +617,16 @@ func TestRolesAdjustment_ReplaceVoter(t *testing.T) {
 	time.Sleep(8 * time.Second)
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Spare, cluster[2].Role)
-	assert.Equal(t, client.Voter, cluster[3].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Spare, cluster[2].Role)
+	assertEqual(t, client.Voter, cluster[3].Role)
 }
 
 // If a voter goes offline, another node takes its place. If possible, pick a
@@ -599,7 +650,7 @@ func TestRolesAdjustment_ReplaceVoterHonorFailureDomain(t *testing.T) {
 
 		app, cleanup := newApp(t, options...)
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 		cleanups[i] = cleanup
@@ -617,19 +668,19 @@ func TestRolesAdjustment_ReplaceVoterHonorFailureDomain(t *testing.T) {
 	time.Sleep(18 * time.Second)
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// The replacement was picked in the same failure domain.
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Spare, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
-	assert.Equal(t, client.StandBy, cluster[4].Role)
-	assert.Equal(t, client.Voter, cluster[5].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Spare, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.StandBy, cluster[4].Role)
+	assertEqual(t, client.Voter, cluster[5].Role)
 }
 
 // If a voter goes offline, another node takes its place. Preference will be
@@ -651,7 +702,7 @@ func TestRolesAdjustment_ReplaceVoterHonorWeight(t *testing.T) {
 
 		app, cleanup := newApp(t, options...)
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 		cleanups[i] = cleanup
@@ -667,36 +718,36 @@ func TestRolesAdjustment_ReplaceVoterHonorWeight(t *testing.T) {
 	cleanups[2]()
 
 	cli, err := apps[3].Client(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, cli.Weight(context.Background(), uint64(15)))
+	requireNoError(t, err)
+	requireNoError(t, cli.Weight(context.Background(), uint64(15)))
 	defer cli.Close()
 
 	cli, err = apps[4].Client(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, cli.Weight(context.Background(), uint64(5)))
+	requireNoError(t, err)
+	requireNoError(t, cli.Weight(context.Background(), uint64(5)))
 	defer cli.Close()
 
 	cli, err = apps[5].Client(context.Background())
-	require.NoError(t, err)
-	require.NoError(t, cli.Weight(context.Background(), uint64(10)))
+	requireNoError(t, err)
+	requireNoError(t, cli.Weight(context.Background(), uint64(10)))
 	defer cli.Close()
 
 	time.Sleep(18 * time.Second)
 
 	cli, err = apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// The stand-by with the lowest weight was picked.
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Spare, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
-	assert.Equal(t, client.Voter, cluster[4].Role)
-	assert.Equal(t, client.StandBy, cluster[5].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Spare, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.Voter, cluster[4].Role)
+	assertEqual(t, client.StandBy, cluster[5].Role)
 }
 
 // If a voter goes offline, but no another node can its place, then nothing
@@ -718,7 +769,7 @@ func TestRolesAdjustment_CantReplaceVoter(t *testing.T) {
 
 		app, cleanup := newApp(t, options...)
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 		cleanups[i] = cleanup
@@ -734,16 +785,16 @@ func TestRolesAdjustment_CantReplaceVoter(t *testing.T) {
 	time.Sleep(12 * time.Second)
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
 }
 
 // If a stand-by goes offline, another node takes its place.
@@ -764,7 +815,7 @@ func TestRolesAdjustment_ReplaceStandBy(t *testing.T) {
 
 		app, cleanup := newApp(t, options...)
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 		cleanups[i] = cleanup
@@ -783,19 +834,19 @@ func TestRolesAdjustment_ReplaceStandBy(t *testing.T) {
 	time.Sleep(20 * time.Second)
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
-	assert.Equal(t, client.Spare, cluster[4].Role)
-	assert.Equal(t, client.StandBy, cluster[5].Role)
-	assert.Equal(t, client.StandBy, cluster[6].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.Spare, cluster[4].Role)
+	assertEqual(t, client.StandBy, cluster[5].Role)
+	assertEqual(t, client.StandBy, cluster[6].Role)
 }
 
 // If a stand-by goes offline, another node takes its place. If possible, pick
@@ -819,7 +870,7 @@ func TestRolesAdjustment_ReplaceStandByHonorFailureDomains(t *testing.T) {
 
 		app, cleanup := newApp(t, options...)
 
-		require.NoError(t, app.Ready(context.Background()))
+		requireNoError(t, app.Ready(context.Background()))
 
 		apps[i] = app
 		cleanups[i] = cleanup
@@ -840,22 +891,22 @@ func TestRolesAdjustment_ReplaceStandByHonorFailureDomains(t *testing.T) {
 	time.Sleep(20 * time.Second)
 
 	cli, err := apps[0].Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// The replacement was picked in the same failure domain.
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
-	assert.Equal(t, client.StandBy, cluster[3].Role)
-	assert.Equal(t, client.Spare, cluster[4].Role)
-	assert.Equal(t, client.StandBy, cluster[5].Role)
-	assert.Equal(t, client.Spare, cluster[6].Role)
-	assert.Equal(t, client.StandBy, cluster[7].Role)
-	assert.Equal(t, client.Spare, cluster[8].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.StandBy, cluster[3].Role)
+	assertEqual(t, client.Spare, cluster[4].Role)
+	assertEqual(t, client.StandBy, cluster[5].Role)
+	assertEqual(t, client.Spare, cluster[6].Role)
+	assertEqual(t, client.StandBy, cluster[7].Role)
+	assertEqual(t, client.Spare, cluster[8].Role)
 }
 
 // Open a database on a fresh one-node cluster.
@@ -864,11 +915,11 @@ func TestOpen(t *testing.T) {
 	defer cleanup()
 
 	db, err := app.Open(context.Background(), "test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer db.Close()
 
 	_, err = db.ExecContext(context.Background(), "CREATE TABLE foo(n INT)")
-	assert.NoError(t, err)
+	assertNoError(t, err)
 }
 
 // Test some setup options
@@ -881,7 +932,7 @@ func TestOptions(t *testing.T) {
 	}
 	app, cleanup := newApp(t, options...)
 	defer cleanup()
-	require.NotNil(t, app)
+	requireNotNil(t, app)
 }
 
 // Test client connections dropping uncleanly.
@@ -895,14 +946,14 @@ func TestProxy_Error(t *testing.T) {
 	// Simulate a client which writes the protocol header, then a Leader
 	// request and finally drops before reading the response.
 	conn, err := dial(context.Background(), "127.0.0.1:9000")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	protocol := make([]byte, 8)
 	binary.LittleEndian.PutUint64(protocol, uint64(1))
 
 	n, err := conn.Write(protocol)
-	require.NoError(t, err)
-	assert.Equal(t, n, 8)
+	requireNoError(t, err)
+	assertEqual(t, n, 8)
 
 	header := make([]byte, 8)
 	binary.LittleEndian.PutUint32(header[0:], 1)
@@ -911,13 +962,13 @@ func TestProxy_Error(t *testing.T) {
 	binary.LittleEndian.PutUint16(header[6:], 0)
 
 	n, err = conn.Write(header)
-	require.NoError(t, err)
-	assert.Equal(t, n, 8)
+	requireNoError(t, err)
+	assertEqual(t, n, 8)
 
 	body := make([]byte, 8)
 	n, err = conn.Write(body)
-	require.NoError(t, err)
-	assert.Equal(t, n, 8)
+	requireNoError(t, err)
+	assertEqual(t, n, 8)
 
 	time.Sleep(100 * time.Millisecond)
 	conn.Close()
@@ -935,7 +986,7 @@ func TestReady_Cancel(t *testing.T) {
 
 	err := app.Ready(ctx)
 
-	assert.Equal(t, ctx.Err(), err)
+	assertEqual(t, ctx.Err(), err)
 }
 
 func newApp(t *testing.T, options ...app.Option) (*app.App, func()) {
@@ -967,16 +1018,16 @@ func TestExternalConnWithTCP(t *testing.T) {
 
 	dialFunc := func(ctx context.Context, addr string) (net.Conn, error) {
 		conn, err := net.Dial("tcp", addr)
-		require.NoError(t, err)
+		requireNoError(t, err)
 
 		request := &http.Request{}
 		request.URL, err = url.Parse("http://" + addr)
-		require.NoError(t, err)
+		requireNoError(t, err)
 
-		require.NoError(t, request.Write(conn))
+		requireNoError(t, request.Write(conn))
 		resp, err := http.ReadResponse(bufio.NewReader(conn), request)
-		require.NoError(t, err)
-		require.Equal(t, hijackStatus, resp.Status)
+		requireNoError(t, err)
+		requireEqual(t, hijackStatus, resp.Status)
 
 		return conn, nil
 	}
@@ -984,10 +1035,10 @@ func TestExternalConnWithTCP(t *testing.T) {
 	newHandler := func(acceptCh chan net.Conn) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			hijacker, ok := w.(http.Hijacker)
-			require.True(t, ok)
+			requireTrue(t, ok)
 
 			conn, _, err := hijacker.Hijack()
-			require.NoError(t, err)
+			requireNoError(t, err)
 
 			acceptCh <- conn
 		}
@@ -1004,29 +1055,29 @@ func TestExternalConnWithTCP(t *testing.T) {
 	app2, cleanup := newAppWithNoTLS(t, app.WithAddress(externalAddr2), app.WithExternalConn(dialFunc, acceptCh2), app.WithCluster([]string{externalAddr1}))
 	defer cleanup()
 
-	require.NoError(t, app2.Ready(context.Background()))
+	requireNoError(t, app2.Ready(context.Background()))
 
 	app3, cleanup := newAppWithNoTLS(t, app.WithAddress(externalAddr3), app.WithExternalConn(dialFunc, acceptCh3), app.WithCluster([]string{externalAddr1}))
 	defer cleanup()
 
-	require.NoError(t, app3.Ready(context.Background()))
+	requireNoError(t, app3.Ready(context.Background()))
 
 	// Get a client from the first node (likely the leader).
 	cli, err := app1.Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	// Ensure entries exist for each cluster member.
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, externalAddr1, cluster[0].Address)
-	assert.Equal(t, externalAddr2, cluster[1].Address)
-	assert.Equal(t, externalAddr3, cluster[2].Address)
+	requireNoError(t, err)
+	assertEqual(t, externalAddr1, cluster[0].Address)
+	assertEqual(t, externalAddr2, cluster[1].Address)
+	assertEqual(t, externalAddr3, cluster[2].Address)
 
 	// Every cluster member should be a voter.
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
 }
 
 // TestExternalPipe creates a 3-member cluster using net.Pipe
@@ -1060,29 +1111,29 @@ func TestExternalConnWithPipe(t *testing.T) {
 	app2, cleanup := newAppWithNoTLS(t, app.WithAddress(externalAddr2), app.WithExternalConn(dialFunc, acceptCh2), app.WithCluster([]string{externalAddr1}))
 	defer cleanup()
 
-	require.NoError(t, app2.Ready(context.Background()))
+	requireNoError(t, app2.Ready(context.Background()))
 
 	app3, cleanup := newAppWithNoTLS(t, app.WithAddress(externalAddr3), app.WithExternalConn(dialFunc, acceptCh3), app.WithCluster([]string{externalAddr1}))
 	defer cleanup()
 
-	require.NoError(t, app3.Ready(context.Background()))
+	requireNoError(t, app3.Ready(context.Background()))
 
 	// Get a client from the first node (likely the leader).
 	cli, err := app1.Leader(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer cli.Close()
 
 	// Ensure entries exist for each cluster member.
 	cluster, err := cli.Cluster(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, externalAddr1, cluster[0].Address)
-	assert.Equal(t, externalAddr2, cluster[1].Address)
-	assert.Equal(t, externalAddr3, cluster[2].Address)
+	requireNoError(t, err)
+	assertEqual(t, externalAddr1, cluster[0].Address)
+	assertEqual(t, externalAddr2, cluster[1].Address)
+	assertEqual(t, externalAddr3, cluster[2].Address)
 
 	// Every cluster member should be a voter.
-	assert.Equal(t, client.Voter, cluster[0].Role)
-	assert.Equal(t, client.Voter, cluster[1].Role)
-	assert.Equal(t, client.Voter, cluster[2].Role)
+	assertEqual(t, client.Voter, cluster[0].Role)
+	assertEqual(t, client.Voter, cluster[1].Role)
+	assertEqual(t, client.Voter, cluster[2].Role)
 }
 
 func TestParallelNewApp(t *testing.T) {
@@ -1093,11 +1144,11 @@ func TestParallelNewApp(t *testing.T) {
 			tt.Parallel()
 			// TODO: switch this to tt.TempDir when we switch to
 			tmpDir := filepath.Join(os.TempDir(), strings.ReplaceAll(tt.Name(), "/", "-"))
-			require.NoError(tt, os.MkdirAll(tmpDir, 0700))
+			requireNoError(tt, os.MkdirAll(tmpDir, 0o700))
 			dqApp, err := app.New(tmpDir,
 				app.WithAddress(fmt.Sprintf("127.0.0.1:%d", 10200+i)),
 			)
-			require.NoError(tt, err)
+			requireNoError(tt, err)
 			defer func() {
 				_ = dqApp.Close()
 				_ = os.RemoveAll(tmpDir)
@@ -1112,7 +1163,7 @@ func newAppWithDir(t *testing.T, dir string, options ...app.Option) (*app.App, f
 	appIndex++
 
 	index := appIndex
-	log := func(l client.LogLevel, format string, a ...interface{}) {
+	log := func(l client.LogLevel, format string, a ...any) {
 		format = fmt.Sprintf("%s - %d: %s: %s", time.Now().Format("15:04:01.000"), index, l.String(), format)
 		t.Logf(format, a...)
 	}
@@ -1121,10 +1172,10 @@ func newAppWithDir(t *testing.T, dir string, options ...app.Option) (*app.App, f
 	options = append(options, app.WithLogFunc(log), app.WithTLS(app.SimpleTLSConfig(cert, pool)))
 
 	app, err := app.New(dir, options...)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	cleanup := func() {
-		require.NoError(t, app.Close())
+		requireNoError(t, app.Close())
 	}
 
 	return app, cleanup
@@ -1137,7 +1188,7 @@ func newAppWithNoTLS(t *testing.T, options ...app.Option) (*app.App, func()) {
 	appIndex++
 
 	index := appIndex
-	log := func(l client.LogLevel, format string, a ...interface{}) {
+	log := func(l client.LogLevel, format string, a ...any) {
 		format = fmt.Sprintf("%s - %d: %s: %s", time.Now().Format("15:04:01.000"), index, l.String(), format)
 		t.Logf(format, a...)
 	}
@@ -1145,10 +1196,10 @@ func newAppWithNoTLS(t *testing.T, options ...app.Option) (*app.App, func()) {
 	options = append(options, app.WithLogFunc(log))
 
 	app, err := app.New(dir, options...)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	cleanup := func() {
-		require.NoError(t, app.Close())
+		requireNoError(t, app.Close())
 		dirCleanup()
 	}
 
@@ -1163,10 +1214,10 @@ func loadCert(t *testing.T) (tls.Certificate, *x509.CertPool) {
 	key := filepath.Join("testdata", "cluster.key")
 
 	keypair, err := tls.LoadX509KeyPair(crt, key)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	data, err := ioutil.ReadFile(crt)
-	require.NoError(t, err)
+	data, err := os.ReadFile(crt)
+	requireNoError(t, err)
 
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(data) {
@@ -1182,8 +1233,8 @@ var appIndex int
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "cowsql-app-test-")
-	assert.NoError(t, err)
+	dir, err := os.MkdirTemp("", "cowsql-app-test-")
+	assertNoError(t, err)
 
 	cleanup := func() {
 		os.RemoveAll(dir)
@@ -1197,10 +1248,10 @@ func Test_TxRowsAffected(t *testing.T) {
 	defer cleanup()
 
 	err := app.Ready(context.Background())
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	db, err := app.Open(context.Background(), "test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer db.Close()
 
 	_, err = db.ExecContext(context.Background(), `
@@ -1208,7 +1259,7 @@ CREATE TABLE test (
 	id            TEXT PRIMARY KEY,
 	value         INT
 );`)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// Insert watermark
 	err = tx(context.Background(), db, func(ctx context.Context, tx *sql.Tx) error {
@@ -1228,7 +1279,7 @@ VALUES
 		}
 		return nil
 	})
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// Update watermark
 	err = tx(context.Background(), db, func(ctx context.Context, tx *sql.Tx) error {
@@ -1251,7 +1302,7 @@ WHERE id = 'id0';
 		}
 		return nil
 	})
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 func tx(ctx context.Context, db *sql.DB, fn func(context.Context, *sql.Tx) error) error {

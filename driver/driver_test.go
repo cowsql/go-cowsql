@@ -18,7 +18,6 @@ import (
 	"context"
 	"database/sql/driver"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -27,8 +26,6 @@ import (
 	"github.com/cowsql/go-cowsql/client"
 	cowsqldriver "github.com/cowsql/go-cowsql/driver"
 	"github.com/cowsql/go-cowsql/logging"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDriver_Open(t *testing.T) {
@@ -36,9 +33,9 @@ func TestDriver_Open(t *testing.T) {
 	defer cleanup()
 
 	conn, err := driver.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestDriver_Prepare(t *testing.T) {
@@ -46,14 +43,14 @@ func TestDriver_Prepare(t *testing.T) {
 	defer cleanup()
 
 	conn, err := driver.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, 0, stmt.NumInput())
+	assertEqual(t, 0, stmt.NumInput())
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestConn_Exec(t *testing.T) {
@@ -61,30 +58,30 @@ func TestConn_Exec(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	execer := conn.(driver.Execer)
 
 	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	result, err := execer.Exec("INSERT INTO test(n) VALUES(1)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	lastInsertID, err := result.LastInsertId()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, lastInsertID, int64(1))
+	assertEqual(t, lastInsertID, int64(1))
 
 	rowsAffected, err := result.RowsAffected()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, rowsAffected, int64(1))
+	assertEqual(t, rowsAffected, int64(1))
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestConn_Query(t *testing.T) {
@@ -92,25 +89,25 @@ func TestConn_Query(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	execer := conn.(driver.Execer)
 
 	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = execer.Exec("INSERT INTO test(n) VALUES(1)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	queryer := conn.(driver.Queryer)
 
 	_, err = queryer.Query("SELECT n FROM test", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestConn_QueryRow(t *testing.T) {
@@ -118,33 +115,33 @@ func TestConn_QueryRow(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	execer := conn.(driver.Execer)
 
 	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = execer.Exec("INSERT INTO test(n) VALUES(1)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = execer.Exec("INSERT INTO test(n) VALUES(1)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	queryer := conn.(driver.Queryer)
 
 	rows, err := queryer.Query("SELECT n FROM test", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	values := make([]driver.Value, 1)
-	require.NoError(t, rows.Next(values))
+	requireNoError(t, rows.Next(values))
 
-	require.NoError(t, rows.Close())
+	requireNoError(t, rows.Close())
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestConn_QueryBlob(t *testing.T) {
@@ -152,35 +149,35 @@ func TestConn_QueryBlob(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	execer := conn.(driver.Execer)
 
 	_, err = execer.Exec("CREATE TABLE test (data BLOB)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	values := []driver.Value{
 		[]byte{'a', 'b', 'c'},
 	}
 	_, err = execer.Exec("INSERT INTO test(data) VALUES(?)", values)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	queryer := conn.(driver.Queryer)
 
 	rows, err := queryer.Query("SELECT data FROM test", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, rows.Columns(), []string{"data"})
+	assertEqual(t, rows.Columns(), []string{"data"})
 
 	values = make([]driver.Value, 1)
-	require.NoError(t, rows.Next(values))
+	requireNoError(t, rows.Next(values))
 
-	assert.Equal(t, []byte{'a', 'b', 'c'}, values[0])
+	assertEqual(t, []byte{'a', 'b', 'c'}, values[0])
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestStmt_Exec(t *testing.T) {
@@ -188,42 +185,42 @@ func TestStmt_Exec(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
 	values := []driver.Value{
 		int64(1),
 	}
 
 	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES(?)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	result, err := stmt.Exec(values)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	lastInsertID, err := result.LastInsertId()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, lastInsertID, int64(1))
+	assertEqual(t, lastInsertID, int64(1))
 
 	rowsAffected, err := result.RowsAffected()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, rowsAffected, int64(1))
+	assertEqual(t, rowsAffected, int64(1))
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestStmt_ExecManyParams(t *testing.T) {
@@ -231,31 +228,31 @@ func TestStmt_ExecManyParams(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
 	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES " + strings.Repeat("(?), ", 299) + " (?)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	values := make([]driver.Value, 300)
 	for i := range values {
 		values[i] = int64(1)
 	}
 	_, err = stmt.Exec(values)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
-	assert.NoError(t, conn.Close())
+	requireNoError(t, stmt.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestStmt_Query(t *testing.T) {
@@ -263,45 +260,45 @@ func TestStmt_Query(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
 	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES(-123)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
 	stmt, err = conn.Prepare("SELECT n FROM test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	rows, err := stmt.Query(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, rows.Columns(), []string{"n"})
+	assertEqual(t, rows.Columns(), []string{"n"})
 
 	values := make([]driver.Value, 1)
-	require.NoError(t, rows.Next(values))
+	requireNoError(t, rows.Next(values))
 
-	assert.Equal(t, int64(-123), values[0])
+	assertEqual(t, int64(-123), values[0])
 
-	require.Equal(t, io.EOF, rows.Next(values))
+	requireEqual(t, io.EOF, rows.Next(values))
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestStmt_QueryManyParams(t *testing.T) {
@@ -309,31 +306,31 @@ func TestStmt_QueryManyParams(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
 	stmt, err = conn.Prepare("SELECT n FROM test WHERE n IN (" + strings.Repeat("?, ", 299) + " ?)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	values := make([]driver.Value, 300)
 	for i := range values {
 		values[i] = int64(1)
 	}
 	_, err = stmt.Query(values)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
-	assert.NoError(t, conn.Close())
+	requireNoError(t, stmt.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestConn_QueryParams(t *testing.T) {
@@ -341,15 +338,15 @@ func TestConn_QueryParams(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	execer := conn.(driver.Execer)
 
 	_, err = execer.Exec("CREATE TABLE test (n INT, t TEXT)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = execer.Exec(`
 INSERT INTO test (n,t) VALUES (1,'a');
@@ -358,7 +355,7 @@ INSERT INTO test (n,t) VALUES (2,'b');
 INSERT INTO test (n,t) VALUES (3,'b');
 `,
 		nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	values := []driver.Value{
 		int64(1),
@@ -368,19 +365,19 @@ INSERT INTO test (n,t) VALUES (3,'b');
 	queryer := conn.(driver.Queryer)
 
 	rows, err := queryer.Query("SELECT n, t FROM test WHERE n > ? AND t = ?", values)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, rows.Columns()[0], "n")
+	assertEqual(t, rows.Columns()[0], "n")
 
 	values = make([]driver.Value, 2)
-	require.NoError(t, rows.Next(values))
+	requireNoError(t, rows.Next(values))
 
-	assert.Equal(t, int64(2), values[0])
-	assert.Equal(t, "a", values[1])
+	assertEqual(t, int64(2), values[0])
+	assertEqual(t, "a", values[1])
 
-	require.Equal(t, io.EOF, rows.Next(values))
+	requireEqual(t, io.EOF, rows.Next(values))
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestConn_QueryManyParams(t *testing.T) {
@@ -388,15 +385,15 @@ func TestConn_QueryManyParams(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	execer := conn.(driver.Execer)
 
 	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	values := make([]driver.Value, 300)
 	for i := range values {
@@ -404,9 +401,9 @@ func TestConn_QueryManyParams(t *testing.T) {
 	}
 	queryer := conn.(driver.Queryer)
 	_, err = queryer.Query("SELECT n FROM test WHERE n IN ("+strings.Repeat("?, ", 299)+" ?)", values)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func TestConn_ExecManyParams(t *testing.T) {
@@ -414,15 +411,15 @@ func TestConn_ExecManyParams(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	execer := conn.(driver.Execer)
 
 	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	values := make([]driver.Value, 300)
 	for i := range values {
@@ -430,9 +427,9 @@ func TestConn_ExecManyParams(t *testing.T) {
 	}
 
 	_, err = execer.Exec("INSERT INTO test(n) VALUES "+strings.Repeat("(?), ", 299)+" (?)", values)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func Test_ColumnTypesEmpty(t *testing.T) {
@@ -441,35 +438,35 @@ func Test_ColumnTypesEmpty(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
 	stmt, err = conn.Prepare("SELECT n FROM test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	rows, err := stmt.Query(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, err)
+	requireNoError(t, err)
 	rowTypes, ok := rows.(driver.RowsColumnTypeDatabaseTypeName)
-	require.True(t, ok)
+	requireTrue(t, ok)
 
 	typeName := rowTypes.ColumnTypeDatabaseTypeName(0)
-	assert.Equal(t, "INTEGER", typeName)
+	assertEqual(t, "INTEGER", typeName)
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
-	assert.NoError(t, conn.Close())
+	assertNoError(t, conn.Close())
 }
 
 func Test_ColumnTypesExists(t *testing.T) {
@@ -477,40 +474,40 @@ func Test_ColumnTypesExists(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
 	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES(-123)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err = conn.Prepare("SELECT n FROM test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	rows, err := stmt.Query(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, err)
+	requireNoError(t, err)
 	rowTypes, ok := rows.(driver.RowsColumnTypeDatabaseTypeName)
-	require.True(t, ok)
+	requireTrue(t, ok)
 
 	typeName := rowTypes.ColumnTypeDatabaseTypeName(0)
-	assert.Equal(t, "INTEGER", typeName)
+	assertEqual(t, "INTEGER", typeName)
 
-	require.NoError(t, stmt.Close())
-	assert.NoError(t, conn.Close())
+	requireNoError(t, stmt.Close())
+	assertNoError(t, conn.Close())
 }
 
 // ensure column types data is available
@@ -520,51 +517,51 @@ func Test_ColumnTypesEnd(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = conn.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
 	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES(-123)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err = conn.Prepare("SELECT n FROM test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	rows, err := stmt.Query(nil)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, err)
+	requireNoError(t, err)
 	rowTypes, ok := rows.(driver.RowsColumnTypeDatabaseTypeName)
-	require.True(t, ok)
+	requireTrue(t, ok)
 
 	typeName := rowTypes.ColumnTypeDatabaseTypeName(0)
-	assert.Equal(t, "INTEGER", typeName)
+	assertEqual(t, "INTEGER", typeName)
 
 	values := make([]driver.Value, 1)
-	require.NoError(t, rows.Next(values))
+	requireNoError(t, rows.Next(values))
 
-	assert.Equal(t, int64(-123), values[0])
+	assertEqual(t, int64(-123), values[0])
 
-	require.Equal(t, io.EOF, rows.Next(values))
+	requireEqual(t, io.EOF, rows.Next(values))
 
 	// despite EOF we should have types cached
 	typeName = rowTypes.ColumnTypeDatabaseTypeName(0)
-	assert.Equal(t, "INTEGER", typeName)
+	assertEqual(t, "INTEGER", typeName)
 
-	require.NoError(t, stmt.Close())
-	assert.NoError(t, conn.Close())
+	requireNoError(t, stmt.Close())
+	assertNoError(t, conn.Close())
 }
 
 func Test_ZeroColumns(t *testing.T) {
@@ -572,15 +569,15 @@ func Test_ZeroColumns(t *testing.T) {
 	defer cleanup()
 
 	conn, err := drv.Open("test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 	queryer := conn.(driver.Queryer)
 
 	rows, err := queryer.Query("CREATE TABLE foo (bar INTEGER)", []driver.Value{})
-	require.NoError(t, err)
+	requireNoError(t, err)
 	values := []driver.Value{}
-	require.Equal(t, io.EOF, rows.Next(values))
+	requireEqual(t, io.EOF, rows.Next(values))
 
-	require.NoError(t, conn.Close())
+	requireNoError(t, conn.Close())
 }
 
 func newDriver(t *testing.T) (*cowsqldriver.Driver, func()) {
@@ -593,7 +590,7 @@ func newDriver(t *testing.T) (*cowsqldriver.Driver, func()) {
 	log := logging.Test(t)
 
 	driver, err := cowsqldriver.New(store, cowsqldriver.WithLogFunc(log))
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	return driver, cleanup
 }
@@ -604,7 +601,7 @@ func newStore(t *testing.T, address string) client.NodeStore {
 
 	store := client.NewInmemNodeStore()
 	server := client.NodeInfo{Address: address}
-	require.NoError(t, store.Set(context.Background(), []client.NodeInfo{server}))
+	requireNoError(t, store.Set(context.Background(), []client.NodeInfo{server}))
 
 	return store
 }
@@ -614,13 +611,13 @@ func newNode(t *testing.T) (*cowsql.Node, func()) {
 	dir, dirCleanup := newDir(t)
 
 	server, err := cowsql.New(uint64(1), "@1", dir, cowsql.WithBindAddress("@1"))
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	err = server.Start()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	cleanup := func() {
-		require.NoError(t, server.Close())
+		requireNoError(t, server.Close())
 		dirCleanup()
 	}
 
@@ -631,15 +628,15 @@ func newNode(t *testing.T) (*cowsql.Node, func()) {
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "cowsql-replication-test-")
-	assert.NoError(t, err)
+	dir, err := os.MkdirTemp("", "cowsql-replication-test-")
+	assertNoError(t, err)
 
 	cleanup := func() {
 		_, err := os.Stat(dir)
 		if err != nil {
-			assert.True(t, os.IsNotExist(err))
+			assertTrue(t, os.IsNotExist(err))
 		} else {
-			assert.NoError(t, os.RemoveAll(dir))
+			assertNoError(t, os.RemoveAll(dir))
 		}
 	}
 

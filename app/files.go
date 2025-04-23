@@ -2,11 +2,10 @@ package app
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
-	"gopkg.in/yaml.v2"
+	"github.com/goccy/go-yaml"
 	"github.com/google/renameio"
 )
 
@@ -41,7 +40,7 @@ func fileExists(dir, file string) (bool, error) {
 func fileWrite(dir, file string, data []byte) error {
 	path := filepath.Join(dir, file)
 
-	if err := renameio.WriteFile(path, data, 0600); err != nil {
+	if err := renameio.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", file, err)
 	}
 
@@ -64,7 +63,7 @@ func fileMarshal(dir, file string, object interface{}) error {
 func fileUnmarshal(dir, file string, object interface{}) error {
 	path := filepath.Join(dir, file)
 
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", file, err)
 	}
