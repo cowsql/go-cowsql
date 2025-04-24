@@ -2,7 +2,6 @@ package app_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"github.com/cowsql/go-cowsql/app"
@@ -16,7 +15,7 @@ import (
 //
 // The very first node has always the same ID (cowsql.BootstrapID).
 func Example() {
-	dir, err := ioutil.TempDir("", "cowsql-app-example-")
+	dir, err := os.MkdirTemp("", "cowsql-app-example-")
 	if err != nil {
 		return
 	}
@@ -55,19 +54,19 @@ func Example() {
 //
 // Each additional node will be automatically assigned a unique ID.
 func ExampleWithCluster() {
-	dir1, err := ioutil.TempDir("", "cowsql-app-example-")
+	dir1, err := os.MkdirTemp("", "cowsql-app-example-")
 	if err != nil {
 		return
 	}
 	defer os.RemoveAll(dir1)
 
-	dir2, err := ioutil.TempDir("", "cowsql-app-example-")
+	dir2, err := os.MkdirTemp("", "cowsql-app-example-")
 	if err != nil {
 		return
 	}
 	defer os.RemoveAll(dir2)
 
-	dir3, err := ioutil.TempDir("", "cowsql-app-example-")
+	dir3, err := os.MkdirTemp("", "cowsql-app-example-")
 	if err != nil {
 		return
 	}

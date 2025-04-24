@@ -3,18 +3,48 @@ package bindings_test
 import (
 	"context"
 	"encoding/binary"
-	"io/ioutil"
 	"net"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cowsql/go-cowsql/internal/bindings"
 	"github.com/cowsql/go-cowsql/internal/protocol"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
+
+var (
+	assertEqual   = requireEqual
+	assertNoError = requireNoError
+)
+
+func assertTrue(t *testing.T, ok bool) {
+	t.Helper()
+	if !ok {
+		t.Fatal(ok)
+	}
+}
+
+func requireNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func requireEqual(t *testing.T, expected, actual interface{}) {
+	t.Helper()
+	if expected == nil || actual == nil {
+		if expected != actual {
+			t.Fatal(expected, actual)
+		}
+	}
+
+	if !reflect.DeepEqual(expected, actual) {
+		t.Fatal(expected, actual)
+	}
+}
 
 func TestNode_Create(t *testing.T) {
 	_, cleanup := newNode(t)
@@ -26,23 +56,23 @@ func TestNode_Start(t *testing.T) {
 	defer cleanup()
 
 	server, err := bindings.NewNode(context.Background(), 1, "1", dir)
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer server.Close()
 
 	err = server.SetBindAddress("@")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	err = server.Start()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	conn, err := net.Dial("unix", server.GetBindAddress())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	conn.Close()
 
-	assert.True(t, strings.HasPrefix(server.GetBindAddress(), "@"))
+	assertTrue(t, strings.HasPrefix(server.GetBindAddress(), "@"))
 
 	err = server.Stop()
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 func TestNode_Restart(t *testing.T) {
@@ -50,21 +80,21 @@ func TestNode_Restart(t *testing.T) {
 	defer cleanup()
 
 	server, err := bindings.NewNode(context.Background(), 1, "1", dir)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, server.SetBindAddress("@abc"))
-	require.NoError(t, server.Start())
+	requireNoError(t, server.SetBindAddress("@abc"))
+	requireNoError(t, server.Start())
 
-	require.NoError(t, server.Stop())
+	requireNoError(t, server.Stop())
 	server.Close()
 
 	server, err = bindings.NewNode(context.Background(), 1, "1", dir)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, server.SetBindAddress("@abc"))
-	require.NoError(t, server.Start())
+	requireNoError(t, server.SetBindAddress("@abc"))
+	requireNoError(t, server.Start())
 
-	require.NoError(t, server.Stop())
+	requireNoError(t, server.Stop())
 	server.Close()
 }
 
@@ -73,21 +103,21 @@ func TestNode_Start_Inet(t *testing.T) {
 	defer cleanup()
 
 	server, err := bindings.NewNode(context.Background(), 1, "1", dir)
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer server.Close()
 
 	err = server.SetBindAddress("127.0.0.1:9000")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	err = server.Start()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	conn, err := net.Dial("tcp", server.GetBindAddress())
-	require.NoError(t, err)
+	requireNoError(t, err)
 	conn.Close()
 
 	err = server.Stop()
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 func TestNode_Leader(t *testing.T) {
@@ -98,9 +128,9 @@ func TestNode_Leader(t *testing.T) {
 
 	// Make a Leader request
 	buf := makeClientRequest(t, conn, protocol.RequestLeader)
-	assert.Equal(t, uint8(1), buf[0])
+	assertEqual(t, uint8(1), buf[0])
 
-	require.NoError(t, conn.Close())
+	requireNoError(t, conn.Close())
 }
 
 // func TestNode_Heartbeat(t *testing.T) {
@@ -118,7 +148,7 @@ func TestNode_Leader(t *testing.T) {
 // 	// Make a Heartbeat request
 // 	makeClientRequest(t, conn, bindings.RequestHeartbeat)
 
-// 	require.NoError(t, conn.Close())
+// 	requireNoError(t, conn.Close())
 // }
 
 // func TestNode_ConcurrentHandleAndClose(t *testing.T) {
@@ -139,11 +169,11 @@ func TestNode_Leader(t *testing.T) {
 // 	}()
 
 // 	conn, err := net.Dial("unix", listener.Addr().String())
-// 	require.NoError(t, err)
+// 	requireNoError(t, err)
 
-// 	require.NoError(t, conn.Close())
+// 	requireNoError(t, conn.Close())
 
-// 	assert.NoError(t, <-acceptCh)
+// 	assertNoError(t, <-acceptCh)
 // }
 
 // Create a new Node object for tests.
@@ -153,15 +183,15 @@ func newNode(t *testing.T) (*bindings.Node, func()) {
 	dir, dirCleanup := newDir(t)
 
 	server, err := bindings.NewNode(context.Background(), 1, "1", dir)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	err = server.SetBindAddress("@test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, server.Start())
+	requireNoError(t, server.Start())
 
 	cleanup := func() {
-		require.NoError(t, server.Stop())
+		requireNoError(t, server.Stop())
 		server.Close()
 		dirCleanup()
 	}
@@ -174,11 +204,11 @@ func newClient(t *testing.T) net.Conn {
 	t.Helper()
 
 	conn, err := net.Dial("unix", "@test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// Handshake
 	err = binary.Write(conn, binary.LittleEndian, protocol.VersionLegacy)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	return conn
 }
@@ -189,22 +219,22 @@ func makeClientRequest(t *testing.T, conn net.Conn, kind byte) []byte {
 
 	// Number of words
 	err := binary.Write(conn, binary.LittleEndian, uint32(1))
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// Type, flags, extra.
 	n, err := conn.Write([]byte{kind, 0, 0, 0})
-	require.NoError(t, err)
-	require.Equal(t, 4, n)
+	requireNoError(t, err)
+	requireEqual(t, 4, n)
 
 	n, err = conn.Write([]byte{0, 0, 0, 0, 0, 0, 0, 0}) // Unused single-word request payload
-	require.NoError(t, err)
-	require.Equal(t, 8, n)
+	requireNoError(t, err)
+	requireEqual(t, 8, n)
 
 	// Read the response
 	conn.SetDeadline(time.Now().Add(250 * time.Millisecond))
 	buf := make([]byte, 64)
 	_, err = conn.Read(buf)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	return buf
 }
@@ -213,15 +243,15 @@ func makeClientRequest(t *testing.T, conn net.Conn, kind byte) []byte {
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "cowsql-replication-test-")
-	assert.NoError(t, err)
+	dir, err := os.MkdirTemp("", "cowsql-replication-test-")
+	assertNoError(t, err)
 
 	cleanup := func() {
 		_, err := os.Stat(dir)
 		if err != nil {
-			assert.True(t, os.IsNotExist(err))
+			assertTrue(t, os.IsNotExist(err))
 		} else {
-			assert.NoError(t, os.RemoveAll(dir))
+			assertNoError(t, os.RemoveAll(dir))
 		}
 	}
 

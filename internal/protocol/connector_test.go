@@ -3,7 +3,6 @@ package protocol_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"testing"
@@ -12,9 +11,28 @@ import (
 	"github.com/cowsql/go-cowsql/internal/bindings"
 	"github.com/cowsql/go-cowsql/internal/protocol"
 	"github.com/cowsql/go-cowsql/logging"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
+
+func requireNotNil(t *testing.T, o any) {
+	t.Helper()
+	if o == nil {
+		t.Fatal("is nil")
+	}
+}
+
+func assertNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertTrue(t *testing.T, ok bool) {
+	t.Helper()
+	if !ok {
+		t.Fatal(ok)
+	}
+}
 
 // Successful connection.
 func TestConnector_Success(t *testing.T) {
@@ -30,9 +48,9 @@ func TestConnector_Success(t *testing.T) {
 	defer cancel()
 
 	client, err := connector.Connect(ctx)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.NoError(t, client.Close())
+	assertNoError(t, client.Close())
 
 	check([]string{
 		"DEBUG: attempt 1: server @test-0: connected",
@@ -50,7 +68,7 @@ func TestConnector_LimitRetries(t *testing.T) {
 	connector := protocol.NewConnector(0, store, config, log)
 
 	_, err := connector.Connect(context.Background())
-	assert.Equal(t, protocol.ErrNoAvailableLeader, err)
+	assertEqual(t, protocol.ErrNoAvailableLeader, err)
 
 	check([]string{
 		"WARN: attempt 1: server @test-123: dial: dial unix @test-123: connect: connection refused",
@@ -70,7 +88,7 @@ func TestConnector_DialTimeout(t *testing.T) {
 	connector := protocol.NewConnector(0, store, config, log)
 
 	_, err := connector.Connect(context.Background())
-	assert.Equal(t, protocol.ErrNoAvailableLeader, err)
+	assertEqual(t, protocol.ErrNoAvailableLeader, err)
 
 	check([]string{
 		"WARN: attempt 1: server 8.8.8.8:9000: dial: dial tcp 8.8.8.8:9000: i/o timeout",
@@ -88,7 +106,7 @@ func TestConnector_EmptyNodeStore(t *testing.T) {
 	defer cancel()
 
 	_, err := connector.Connect(ctx)
-	assert.Equal(t, protocol.ErrNoAvailableLeader, err)
+	assertEqual(t, protocol.ErrNoAvailableLeader, err)
 
 	check([]string{})
 }
@@ -104,7 +122,7 @@ func TestConnector_ContextCanceled(t *testing.T) {
 	defer cancel()
 
 	_, err := connector.Connect(ctx)
-	assert.Equal(t, protocol.ErrNoAvailableLeader, err)
+	assertEqual(t, protocol.ErrNoAvailableLeader, err)
 
 	check([]string{
 		"WARN: attempt 1: server 1.2.3.4:666: dial: dial tcp 1.2.3.4:666: i/o timeout",
@@ -115,7 +133,7 @@ func TestConnector_ContextCanceled(t *testing.T) {
 // attempt timeout.
 func TestConnector_AttemptTimeout(t *testing.T) {
 	listener, err := net.Listen("unix", "@1234")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	store := newStore(t, []string{listener.Addr().String()})
 	config := protocol.Config{
@@ -126,8 +144,8 @@ func TestConnector_AttemptTimeout(t *testing.T) {
 	var conn net.Conn
 	go func() {
 		conn, err = listener.Accept()
-		require.NoError(t, err)
-		require.NotNil(t, conn)
+		requireNoError(t, err)
+		requireNotNil(t, conn)
 	}()
 	defer func() {
 		if conn != nil {
@@ -136,7 +154,7 @@ func TestConnector_AttemptTimeout(t *testing.T) {
 	}()
 
 	_, err = connector.Connect(context.Background())
-	assert.Equal(t, protocol.ErrNoAvailableLeader, err)
+	assertEqual(t, protocol.ErrNoAvailableLeader, err)
 }
 
 // If an election is in progress, the connector will retry until a leader gets
@@ -164,9 +182,9 @@ func TestConnector_AttemptTimeout(t *testing.T) {
 // 	defer cancel()
 
 // 	client, err := connector.Connect(ctx)
-// 	require.NoError(t, err)
+// 	requireNoError(t, err)
 
-// 	assert.NoError(t, client.Close())
+// 	assertNoError(t, client.Close())
 // }
 
 // If a server reports that it knows about the leader, the hint will be taken
@@ -201,9 +219,9 @@ func TestConnector_AttemptTimeout(t *testing.T) {
 // 	defer cancel()
 
 // 	client, err := connector.Connect(ctx)
-// 	require.NoError(t, err)
+// 	requireNoError(t, err)
 
-// 	assert.NoError(t, client.Close())
+// 	assertNoError(t, client.Close())
 // }
 
 // If a server reports that it knows about the leader, the hint will be taken
@@ -248,9 +266,9 @@ func TestConnector_AttemptTimeout(t *testing.T) {
 // 	defer cancel()
 
 // 	client, err := connector.Connect(ctx)
-// 	require.NoError(t, err)
+// 	requireNoError(t, err)
 
-// 	assert.NoError(t, client.Close())
+// 	assertNoError(t, client.Close())
 // }
 
 // If a server reports that it knows about the leader, the hint will be taken
@@ -286,9 +304,9 @@ func TestConnector_AttemptTimeout(t *testing.T) {
 // 	defer cancel()
 
 // 	client, err := connector.Connect(ctx)
-// 	require.NoError(t, err)
+// 	requireNoError(t, err)
 
-// 	assert.NoError(t, client.Close())
+// 	assertNoError(t, client.Close())
 // }
 
 // Return a log function that emits messages using the test logger as well as
@@ -300,10 +318,9 @@ func newLogFunc(t *testing.T) (logging.Func, func([]string)) {
 		message := l.String() + ": " + fmt.Sprintf(format, a...)
 		messages = append(messages, message)
 		t.Log(message)
-
 	}
 	check := func(expected []string) {
-		assert.Equal(t, expected, messages)
+		assertEqual(t, expected, messages)
 	}
 	return log, check
 }
@@ -319,7 +336,7 @@ func newStore(t *testing.T, addresses []string) protocol.NodeStore {
 	}
 
 	store := protocol.NewInmemNodeStore()
-	require.NoError(t, store.Set(context.Background(), servers))
+	requireNoError(t, store.Set(context.Background(), servers))
 
 	return store
 }
@@ -333,14 +350,14 @@ func newNode(t *testing.T, index int) (string, func()) {
 	address := fmt.Sprintf("@test-%d", index)
 
 	server, err := bindings.NewNode(context.Background(), id, address, dir)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	err = server.SetBindAddress(address)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, server.Start())
+	requireNoError(t, server.Start())
 	cleanup := func() {
-		require.NoError(t, server.Stop())
+		requireNoError(t, server.Stop())
 		server.Close()
 		dirCleanup()
 	}
@@ -352,15 +369,15 @@ func newNode(t *testing.T, index int) (string, func()) {
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir("", "cowsql-connector-test-")
-	assert.NoError(t, err)
+	dir, err := os.MkdirTemp("", "cowsql-connector-test-")
+	assertNoError(t, err)
 
 	cleanup := func() {
 		_, err := os.Stat(dir)
 		if err != nil {
-			assert.True(t, os.IsNotExist(err))
+			assertTrue(t, os.IsNotExist(err))
 		} else {
-			assert.NoError(t, os.RemoveAll(dir))
+			assertNoError(t, os.RemoveAll(dir))
 		}
 	}
 

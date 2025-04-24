@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -38,7 +38,7 @@ func main() {
 Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := filepath.Join(dir, db)
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return errors.Wrapf(err, "can't create %s", dir)
 			}
 			logFunc := func(l client.LogLevel, format string, a ...interface{}) {
@@ -59,7 +59,7 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 				if err != nil {
 					return err
 				}
-				data, err := ioutil.ReadFile(crt)
+				data, err := os.ReadFile(crt)
 				if err != nil {
 					return err
 				}
@@ -100,7 +100,7 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 					break
 				case "PUT":
 					result = "done"
-					value, _ := ioutil.ReadAll(r.Body)
+					value, _ := io.ReadAll(r.Body)
 					if _, err := db.Exec(update, key, string(value[:])); err != nil {
 						result = fmt.Sprintf("Error: %s", err.Error())
 					}

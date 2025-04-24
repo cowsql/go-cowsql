@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -12,74 +13,157 @@ import (
 	"github.com/cowsql/go-cowsql/client"
 	"github.com/cowsql/go-cowsql/driver"
 	"github.com/cowsql/go-cowsql/logging"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // https://sqlite.org/rescode.html#constraint_unique
 const SQLITE_CONSTRAINT_UNIQUE = 2067
+
+var (
+	requireNoError = assertNoError
+	requireTrue    = assertTrue
+	requireEqual   = assertEqual
+)
+
+func assertTrue(t *testing.T, ok bool) {
+	t.Helper()
+	if !ok {
+		t.Fatal(ok)
+	}
+}
+
+func assertNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertEqual(t *testing.T, expected, actual any) {
+	t.Helper()
+	if expected == nil || actual == nil {
+		if expected != actual {
+			t.Fatal(expected, actual)
+		}
+	}
+
+	if !reflect.DeepEqual(expected, actual) {
+		t.Fatal(expected, actual)
+	}
+}
+
+func assertEqualError(t *testing.T, err error, msg string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal()
+	}
+
+	if err.Error() != msg {
+		t.Fatal(err)
+	}
+}
+
+func requireNil(t *testing.T, x interface{}) {
+	t.Helper()
+
+	if x != nil {
+		v := reflect.ValueOf(x)
+		switch v.Kind() {
+		case reflect.Chan, reflect.Func,
+			reflect.Interface, reflect.Map,
+			reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
+			if !v.IsNil() {
+				t.Fatal(x)
+			}
+		}
+	}
+}
+
+func requireNotNil(t *testing.T, x interface{}) {
+	t.Helper()
+
+	if x == nil {
+		t.Fatal(x)
+	}
+
+	v := reflect.ValueOf(x)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func,
+		reflect.Interface, reflect.Map,
+		reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
+		if v.IsNil() {
+			t.Fatal(x)
+		}
+	}
+}
+
+func assertError(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal()
+	}
+}
 
 func TestIntegration_DatabaseSQL(t *testing.T) {
 	db, _, cleanup := newDB(t, 3)
 	defer cleanup()
 
 	tx, err := db.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = tx.Exec(`
 CREATE TABLE test  (n INT, s TEXT);
 CREATE TABLE test2 (n INT, t DATETIME DEFAULT CURRENT_TIMESTAMP)
 `)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := tx.Prepare("INSERT INTO test(n, s) VALUES(?, ?)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = stmt.Exec(int64(123), "hello")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
 	_, err = tx.Exec("INSERT INTO test2(n) VALUES(?)", int64(456))
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, tx.Commit())
+	requireNoError(t, tx.Commit())
 
 	tx, err = db.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	rows, err := tx.Query("SELECT n, s FROM test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	for rows.Next() {
 		var n int64
 		var s string
 
-		require.NoError(t, rows.Scan(&n, &s))
+		requireNoError(t, rows.Scan(&n, &s))
 
-		assert.Equal(t, int64(123), n)
-		assert.Equal(t, "hello", s)
+		assertEqual(t, int64(123), n)
+		assertEqual(t, "hello", s)
 	}
 
-	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
+	requireNoError(t, rows.Err())
+	requireNoError(t, rows.Close())
 
 	rows, err = tx.Query("SELECT n, t FROM test2")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	for rows.Next() {
 		var n int64
 		var s time.Time
 
-		require.NoError(t, rows.Scan(&n, &s))
+		requireNoError(t, rows.Scan(&n, &s))
 
-		assert.Equal(t, int64(456), n)
+		assertEqual(t, int64(456), n)
 	}
 
-	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
+	requireNoError(t, rows.Err())
+	requireNoError(t, rows.Close())
 
-	require.NoError(t, tx.Rollback())
+	requireNoError(t, tx.Rollback())
 }
 
 func TestIntegration_ConstraintError(t *testing.T) {
@@ -87,15 +171,15 @@ func TestIntegration_ConstraintError(t *testing.T) {
 	defer cleanup()
 
 	_, err := db.Exec("CREATE TABLE test (n INT, UNIQUE (n))")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = db.Exec("INSERT INTO test (n) VALUES (1)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = db.Exec("INSERT INTO test (n) VALUES (1)")
 	if err, ok := err.(driver.Error); ok {
-		assert.Equal(t, SQLITE_CONSTRAINT_UNIQUE, err.Code)
-		assert.Equal(t, "UNIQUE constraint failed: test.n", err.Message)
+		assertEqual(t, SQLITE_CONSTRAINT_UNIQUE, err.Code)
+		assertEqual(t, "UNIQUE constraint failed: test.n", err.Message)
 	} else {
 		t.Fatalf("expected diver error, got %+v", err)
 	}
@@ -110,10 +194,10 @@ func TestIntegration_ExecBindError(t *testing.T) {
 	defer cancel()
 
 	_, err := db.ExecContext(ctx, "CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = db.ExecContext(ctx, "INSERT INTO test(n) VALUES(1)", 1)
-	assert.EqualError(t, err, "bind parameters")
+	assertEqualError(t, err, "bind parameters")
 }
 
 func TestIntegration_QueryBindError(t *testing.T) {
@@ -125,7 +209,7 @@ func TestIntegration_QueryBindError(t *testing.T) {
 	defer cancel()
 
 	_, err := db.QueryContext(ctx, "SELECT 1", 1)
-	assert.EqualError(t, err, "bind parameters")
+	assertEqualError(t, err, "bind parameters")
 }
 
 func TestIntegration_LargeQuery(t *testing.T) {
@@ -133,50 +217,50 @@ func TestIntegration_LargeQuery(t *testing.T) {
 	defer cleanup()
 
 	tx, err := db.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = tx.Exec("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	stmt, err := tx.Prepare("INSERT INTO test(n) VALUES(?)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	for i := 0; i < 512; i++ {
 		_, err = stmt.Exec(int64(i))
-		require.NoError(t, err)
+		requireNoError(t, err)
 	}
 
-	require.NoError(t, stmt.Close())
+	requireNoError(t, stmt.Close())
 
-	require.NoError(t, tx.Commit())
+	requireNoError(t, tx.Commit())
 
 	tx, err = db.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	rows, err := tx.Query("SELECT n FROM test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	columns, err := rows.Columns()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, []string{"n"}, columns)
+	assertEqual(t, []string{"n"}, columns)
 
 	count := 0
 	for i := 0; rows.Next(); i++ {
 		var n int64
 
-		require.NoError(t, rows.Scan(&n))
+		requireNoError(t, rows.Scan(&n))
 
-		assert.Equal(t, int64(i), n)
+		assertEqual(t, int64(i), n)
 		count++
 	}
 
-	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
+	requireNoError(t, rows.Err())
+	requireNoError(t, rows.Close())
 
-	assert.Equal(t, count, 512)
+	assertEqual(t, count, 512)
 
-	require.NoError(t, tx.Rollback())
+	requireNoError(t, tx.Rollback())
 }
 
 // Build a 2-node cluster, kill one node and recover the other.
@@ -185,7 +269,7 @@ func TestIntegration_Recover(t *testing.T) {
 	defer cleanup()
 
 	_, err := db.Exec("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	helpers[0].Close()
 	helpers[1].Close()
@@ -193,7 +277,7 @@ func TestIntegration_Recover(t *testing.T) {
 	helpers[0].Create()
 
 	infos := []client.NodeInfo{{ID: 1, Address: "@1"}}
-	require.NoError(t, helpers[0].Node.Recover(infos))
+	requireNoError(t, helpers[0].Node.Recover(infos))
 
 	helpers[0].Start()
 
@@ -201,10 +285,10 @@ func TestIntegration_Recover(t *testing.T) {
 	// such table", because the replication hooks are not triggered and the
 	// barrier is not applied.
 	_, err = db.Exec("CREATE TABLE test2 (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = db.Exec("INSERT INTO test(n) VALUES(1)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 // The db.Ping() method can be used to wait until there is a stable leader.
@@ -217,18 +301,18 @@ func TestIntegration_PingOnlyWorksOnceLeaderElected(t *testing.T) {
 	// Ping returns an error, since the cluster is not available.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	assert.Error(t, db.PingContext(ctx))
+	assertError(t, db.PingContext(ctx))
 
 	helpers[0].Create()
 	helpers[0].Start()
 
 	// Ping now returns no error, since the cluster is available.
-	assert.NoError(t, db.Ping())
+	assertNoError(t, db.Ping())
 
 	// If leadership is lost after the first successful call, Ping() still
 	// returns no error.
 	helpers[0].Close()
-	assert.NoError(t, db.Ping())
+	assertNoError(t, db.Ping())
 }
 
 func TestIntegration_HighAvailability(t *testing.T) {
@@ -236,7 +320,7 @@ func TestIntegration_HighAvailability(t *testing.T) {
 	defer cleanup()
 
 	_, err := db.Exec("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// Shutdown all three nodes.
 	helpers[0].Close()
@@ -253,7 +337,7 @@ func TestIntegration_HighAvailability(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	_, err = db.Exec("INSERT INTO test(n) VALUES(1)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 func TestIntegration_LeadershipTransfer(t *testing.T) {
@@ -261,13 +345,13 @@ func TestIntegration_LeadershipTransfer(t *testing.T) {
 	defer cleanup()
 
 	_, err := db.Exec("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	cli := helpers[0].Client()
-	require.NoError(t, cli.Transfer(context.Background(), 2))
+	requireNoError(t, cli.Transfer(context.Background(), 2))
 
 	_, err = db.Exec("INSERT INTO test(n) VALUES(1)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 func TestIntegration_LeadershipTransfer_Tx(t *testing.T) {
@@ -275,18 +359,18 @@ func TestIntegration_LeadershipTransfer_Tx(t *testing.T) {
 	defer cleanup()
 
 	_, err := db.Exec("CREATE TABLE test (n INT)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	cli := helpers[0].Client()
-	require.NoError(t, cli.Transfer(context.Background(), 2))
+	requireNoError(t, cli.Transfer(context.Background(), 2))
 
 	tx, err := db.Begin()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = tx.Query("SELECT * FROM test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	require.NoError(t, tx.Commit())
+	requireNoError(t, tx.Commit())
 }
 
 func TestOptions(t *testing.T) {
@@ -304,7 +388,7 @@ func TestOptions(t *testing.T) {
 		driver.WithAttemptTimeout(5*time.Second),
 		driver.WithRetryLimit(0),
 	)
-	require.NoError(t, err)
+	requireNoError(t, err)
 }
 
 func newDB(t *testing.T, n int) (*sql.DB, []*nodeHelper, func()) {
@@ -322,12 +406,12 @@ func newDBWithInfos(t *testing.T, infos []client.NodeInfo) (*sql.DB, []*nodeHelp
 
 	store := client.NewInmemNodeStore()
 
-	require.NoError(t, store.Set(context.Background(), infos))
+	requireNoError(t, store.Set(context.Background(), infos))
 
 	log := logging.Test(t)
 
 	driver, err := driver.New(store, driver.WithLogFunc(log))
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	driverName := fmt.Sprintf("cowsql-integration-test-%d", driversCount)
 	sql.Register(driverName, driver)
@@ -335,10 +419,10 @@ func newDBWithInfos(t *testing.T, infos []client.NodeInfo) (*sql.DB, []*nodeHelp
 	driversCount++
 
 	db, err := sql.Open(driverName, "test.db")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	cleanup := func() {
-		require.NoError(t, db.Close())
+		requireNoError(t, db.Close())
 		helpersCleanup()
 	}
 
@@ -377,25 +461,25 @@ func newNodeHelper(t *testing.T, id uint64, address string) *nodeHelper {
 
 func (h *nodeHelper) Client() *client.Client {
 	client, err := client.New(context.Background(), h.Node.BindAddress())
-	require.NoError(h.t, err)
+	requireNoError(h.t, err)
 	return client
 }
 
 func (h *nodeHelper) Create() {
 	var err error
-	require.Nil(h.t, h.Node)
+	requireNil(h.t, h.Node)
 	h.Node, err = cowsql.New(h.ID, h.Address, h.Dir, cowsql.WithBindAddress(h.Address))
-	require.NoError(h.t, err)
+	requireNoError(h.t, err)
 }
 
 func (h *nodeHelper) Start() {
-	require.NotNil(h.t, h.Node)
-	require.NoError(h.t, h.Node.Start())
+	requireNotNil(h.t, h.Node)
+	requireNoError(h.t, h.Node.Start())
 }
 
 func (h *nodeHelper) Close() {
-	require.NotNil(h.t, h.Node)
-	require.NoError(h.t, h.Node.Close())
+	requireNotNil(h.t, h.Node)
+	requireNoError(h.t, h.Node.Close())
 	h.Node = nil
 }
 
@@ -403,7 +487,7 @@ func (h *nodeHelper) cleanup() {
 	if h.Node != nil {
 		h.Close()
 	}
-	require.NoError(h.t, os.RemoveAll(h.Dir))
+	requireNoError(h.t, os.RemoveAll(h.Dir))
 }
 
 func newNodeHelpers(t *testing.T, infos []client.NodeInfo) ([]*nodeHelper, func()) {
@@ -419,7 +503,7 @@ func newNodeHelpers(t *testing.T, infos []client.NodeInfo) ([]*nodeHelper, func(
 			client := helpers[0].Client()
 			defer client.Close()
 
-			require.NoError(t, client.Add(context.Background(), infos[i]))
+			requireNoError(t, client.Add(context.Background(), infos[i]))
 		}
 	}
 
@@ -439,26 +523,26 @@ func TestIntegration_ColumnTypeName(t *testing.T) {
 	defer cleanup()
 
 	_, err := db.Exec("CREATE TABLE test (n INT, UNIQUE (n))")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	_, err = db.Exec("INSERT INTO test (n) VALUES (1)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	rows, err := db.Query("SELECT n FROM test")
-	require.NoError(t, err)
+	requireNoError(t, err)
 	defer rows.Close()
 
 	types, err := rows.ColumnTypes()
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, "INTEGER", types[0].DatabaseTypeName())
+	assertEqual(t, "INTEGER", types[0].DatabaseTypeName())
 
-	require.True(t, rows.Next())
+	requireTrue(t, rows.Next())
 	var n int64
 	err = rows.Scan(&n)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, int64(1), n)
+	assertEqual(t, int64(1), n)
 }
 
 func TestIntegration_SqlNullTime(t *testing.T) {
@@ -466,22 +550,24 @@ func TestIntegration_SqlNullTime(t *testing.T) {
 	defer cleanup()
 
 	_, err := db.Exec("CREATE TABLE test (tm DATETIME)")
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	// Insert sql.NullTime into DB
 	var t1 sql.NullTime
 	res, err := db.Exec("INSERT INTO test (tm) VALUES (?)", t1)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
 	n, err := res.RowsAffected()
-	require.NoError(t, err)
-	assert.EqualValues(t, n, 1)
+	requireNoError(t, err)
+	if n != 1 {
+		t.Fatal(n, 1)
+	}
 
 	// Retrieve inserted sql.NullTime from DB
 	row := db.QueryRow("SELECT tm FROM test LIMIT 1")
 	var t2 sql.NullTime
 	err = row.Scan(&t2)
-	require.NoError(t, err)
+	requireNoError(t, err)
 
-	assert.Equal(t, t1, t2)
+	assertEqual(t, t1, t2)
 }
