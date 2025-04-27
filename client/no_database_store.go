@@ -5,7 +5,7 @@ package client
 import (
 	"strings"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 // DefaultNodeStore creates a new NodeStore using the given filename.

@@ -1,3 +1,4 @@
+//go:build !nosqlite3
 // +build !nosqlite3
 
 package cowsql
@@ -8,7 +9,6 @@ import (
 
 	"github.com/cowsql/go-cowsql/internal/bindings"
 	"github.com/cowsql/go-cowsql/internal/protocol"
-	"github.com/pkg/errors"
 )
 
 // ConfigMultiThread sets the threading mode of SQLite to Multi-thread.
@@ -32,7 +32,7 @@ func ConfigMultiThread() error {
 		if err, ok := err.(protocol.Error); ok && err.Code == 21 /* SQLITE_MISUSE */ {
 			return fmt.Errorf("SQLite is already initialized")
 		}
-		return errors.Wrap(err, "unknown error")
+		return fmt.Errorf("unknow error: %w", err)
 	}
 	return nil
 }
@@ -45,6 +45,6 @@ func init() {
 	}
 	err := bindings.ConfigSingleThread()
 	if err != nil {
-		panic(errors.Wrap(err, "set single thread mode"))
+		panic(fmt.Errorf("set single thread mode: %w", err))
 	}
 }

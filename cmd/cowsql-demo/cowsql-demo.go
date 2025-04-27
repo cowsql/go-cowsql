@@ -16,7 +16,6 @@ import (
 
 	"github.com/cowsql/go-cowsql/app"
 	"github.com/cowsql/go-cowsql/client"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 )
@@ -39,7 +38,7 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := filepath.Join(dir, db)
 			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return errors.Wrapf(err, "can't create %s", dir)
+				return fmt.Errorf("can't create %s: %w", dir, err)
 			}
 			logFunc := func(l client.LogLevel, format string, a ...interface{}) {
 				if !verbose {

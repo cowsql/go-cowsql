@@ -1,4 +1,4 @@
-// +build !nosqlite3
+//go:build !nosqlite3
 
 package client
 
@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pkg/errors"
 	_ "github.com/mattn/go-sqlite3" // Go SQLite bindings
 )
 
@@ -43,7 +42,7 @@ func DefaultNodeStore(filename string) (NodeStore, error) {
 	// Open the database.
 	db, err := sql.Open("sqlite3", filename)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to open database")
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Since we're setting SQLite single-thread mode, we need to have one
@@ -53,7 +52,7 @@ func DefaultNodeStore(filename string) (NodeStore, error) {
 	// Create the servers table if it does not exist yet.
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS servers (address TEXT, UNIQUE(address))")
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create servers table")
+		return nil, fmt.Errorf("failed to create servers table: %w", err)
 	}
 
 	store := NewNodeStore(db, "main", "servers", "address")
@@ -90,7 +89,7 @@ func WithNodeStoreWhereClause(where string) NodeStoreOption {
 func (d *DatabaseNodeStore) Get(ctx context.Context) ([]NodeInfo, error) {
 	tx, err := d.db.Begin()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to begin transaction")
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -100,7 +99,7 @@ func (d *DatabaseNodeStore) Get(ctx context.Context) ([]NodeInfo, error) {
 	}
 	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to query servers table")
+		return nil, fmt.Errorf("failed to query servers table: %w", err)
 	}
 	defer rows.Close()
 
@@ -109,12 +108,12 @@ func (d *DatabaseNodeStore) Get(ctx context.Context) ([]NodeInfo, error) {
 		var address string
 		err := rows.Scan(&address)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to fetch server address")
+			return nil, fmt.Errorf("failed to fetch server address: %w", err)
 		}
 		servers = append(servers, NodeInfo{ID: 1, Address: address})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "result set failure")
+		return nil, fmt.Errorf("result set failure: %w", err)
 	}
 
 	return servers, nil
@@ -124,34 +123,33 @@ func (d *DatabaseNodeStore) Get(ctx context.Context) ([]NodeInfo, error) {
 func (d *DatabaseNodeStore) Set(ctx context.Context, servers []NodeInfo) error {
 	tx, err := d.db.Begin()
 	if err != nil {
-		return errors.Wrap(err, "failed to begin transaction")
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	query := fmt.Sprintf("DELETE FROM %s.%s", d.schema, d.table)
 	if _, err := tx.ExecContext(ctx, query); err != nil {
 		tx.Rollback()
-		return errors.Wrap(err, "failed to delete existing servers rows")
+		return fmt.Errorf("failed to delete existing servers rows: %w", err)
 	}
 
 	query = fmt.Sprintf("INSERT INTO %s.%s(%s) VALUES (?)", d.schema, d.table, d.column)
 	stmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
 		tx.Rollback()
-		return errors.Wrap(err, "failed to prepare insert statement")
+		return fmt.Errorf("failed to prepare insert statement: %w", err)
 	}
 	defer stmt.Close()
 
 	for _, server := range servers {
 		if _, err := stmt.ExecContext(ctx, server.Address); err != nil {
 			tx.Rollback()
-			return errors.Wrapf(err, "failed to insert server %s", server.Address)
+			return fmt.Errorf("failed to insert server %s: %w", server.Address, err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return errors.Wrap(err, "failed to commit transaction")
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
 }
-

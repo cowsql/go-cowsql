@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,7 +14,6 @@ import (
 	"github.com/Rican7/retry/backoff"
 	"github.com/Rican7/retry/strategy"
 	"github.com/cowsql/go-cowsql/logging"
-	"github.com/pkg/errors"
 )
 
 // DialFunc is a function that can be used to establish a network connection.
@@ -92,7 +92,6 @@ func (c *Connector) Connect(ctx context.Context) (*Protocol, error) {
 
 		return nil
 	}, strategies...)
-
 	if err != nil {
 		// We exhausted the number of retries allowed by the configured
 		// strategy.
@@ -118,7 +117,7 @@ func (c *Connector) Connect(ctx context.Context) (*Protocol, error) {
 func (c *Connector) connectAttemptAll(ctx context.Context, log logging.Func) (*Protocol, error) {
 	servers, err := c.store.Get(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "get servers")
+		return nil, fmt.Errorf("get servers: %w", err)
 	}
 
 	// Sort servers by Role, from low to high.
@@ -203,10 +202,10 @@ func Handshake(ctx context.Context, conn net.Conn, version uint64) (*Protocol, e
 	// Perform the protocol handshake.
 	n, err := conn.Write(protocol)
 	if err != nil {
-		return nil, errors.Wrap(err, "write handshake")
+		return nil, fmt.Errorf("write handshake: %w", err)
 	}
 	if n != 8 {
-		return nil, errors.Wrap(io.ErrShortWrite, "short handshake write")
+		return nil, fmt.Errorf("short handshake write: %w", err)
 	}
 
 	return newProtocol(version, conn), nil
@@ -227,7 +226,7 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string, versi
 	// Establish the connection.
 	conn, err := c.config.Dial(dialCtx, address)
 	if err != nil {
-		return nil, "", errors.Wrap(err, "dial")
+		return nil, "", fmt.Errorf("dial: %w", err)
 	}
 
 	protocol, err := Handshake(ctx, conn, version)
@@ -246,10 +245,10 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string, versi
 
 	if err := protocol.Call(ctx, &request, &response); err != nil {
 		protocol.Close()
-		cause := errors.Cause(err)
+		var neterr *net.OpError
 		// Best-effort detection of a pre-1.0 cowsql node: when sent
 		// version 1 it should close the connection immediately.
-		if err, ok := cause.(*net.OpError); ok && !err.Timeout() || cause == io.EOF {
+		if errors.As(err, &neterr) && neterr != nil && !neterr.Timeout() || errors.Is(err, io.EOF) {
 			return nil, "", errBadProtocol
 		}
 
