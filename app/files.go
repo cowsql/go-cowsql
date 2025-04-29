@@ -48,7 +48,7 @@ func fileWrite(dir, file string, data []byte) error {
 }
 
 // Marshal the given object as YAML into the given file.
-func fileMarshal(dir, file string, object interface{}) error {
+func fileMarshal(dir, file string, object any) error {
 	data, err := yaml.Marshal(object)
 	if err != nil {
 		return fmt.Errorf("marshall %s: %w", file, err)
@@ -60,7 +60,7 @@ func fileMarshal(dir, file string, object interface{}) error {
 }
 
 // Unmarshal the given YAML file into the given object.
-func fileUnmarshal(dir, file string, object interface{}) error {
+func fileUnmarshal(dir, file string, object any) error {
 	path := filepath.Join(dir, file)
 
 	data, err := os.ReadFile(path)

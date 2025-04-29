@@ -1,11 +1,10 @@
-// +build nosqlite3
+//go:build nosqlite3
 
 package client
 
 import (
-	"strings"
-
 	"errors"
+	"strings"
 )
 
 // DefaultNodeStore creates a new NodeStore using the given filename.

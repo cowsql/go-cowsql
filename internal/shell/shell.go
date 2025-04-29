@@ -340,8 +340,8 @@ func (s *Shell) processQuery(ctx context.Context, line string) (string, error) {
 
 	var sb strings.Builder
 	for rows.Next() {
-		row := make([]interface{}, n)
-		rowPointers := make([]interface{}, n)
+		row := make([]any, n)
+		rowPointers := make([]any, n)
 		for i := range row {
 			rowPointers[i] = &row[i]
 		}

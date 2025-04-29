@@ -33,7 +33,7 @@ func requireLen(t *testing.T, x any, l int) {
 	}
 }
 
-func assertEqual(t *testing.T, expected, actual interface{}) {
+func assertEqual(t *testing.T, expected, actual any) {
 	t.Helper()
 	if expected == nil || actual == nil {
 		if expected != actual {

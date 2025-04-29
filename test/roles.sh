@@ -25,19 +25,20 @@ import (
     "time"
     "path/filepath"
     "strconv"
+    "syscall"
+
     "github.com/cowsql/go-cowsql/client"
     "github.com/cowsql/go-cowsql/app"
-    "golang.org/x/sys/unix"
 )
 
 func main() {
      ch := make(chan os.Signal, 5)
-     signal.Notify(ch, unix.SIGINT)
-     signal.Notify(ch, unix.SIGTERM)
+     signal.Notify(ch, syscall.SIGINT)
+     signal.Notify(ch, syscall.SIGTERM)
      dir := filepath.Join("$DIR", os.Args[1])
      index, _ := strconv.Atoi(os.Args[1])
      verbose := $VERBOSE
-     logFunc := func(l client.LogLevel, format string, a ...interface{}) {
+     logFunc := func(l client.LogLevel, format string, a ...any) {
          if verbose != 1 {
              return
          }

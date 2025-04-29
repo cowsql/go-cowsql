@@ -6,12 +6,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/cowsql/go-cowsql/app"
 	"github.com/cowsql/go-cowsql/benchmark"
 	"github.com/spf13/cobra"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -43,10 +43,10 @@ const (
 
 func signalChannel() chan os.Signal {
 	ch := make(chan os.Signal, 32)
-	signal.Notify(ch, unix.SIGPWR)
-	signal.Notify(ch, unix.SIGINT)
-	signal.Notify(ch, unix.SIGQUIT)
-	signal.Notify(ch, unix.SIGTERM)
+	signal.Notify(ch, syscall.SIGPWR)
+	signal.Notify(ch, syscall.SIGINT)
+	signal.Notify(ch, syscall.SIGQUIT)
+	signal.Notify(ch, syscall.SIGTERM)
 	return ch
 }
 

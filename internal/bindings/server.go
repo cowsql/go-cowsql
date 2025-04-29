@@ -64,6 +64,7 @@ static void setInfo(cowsql_node_info_ext *infos, unsigned i, cowsql_node_id id,
 
 */
 import "C"
+
 import (
 	"context"
 	"fmt"
@@ -214,7 +215,7 @@ func (s *Node) Close() {
 
 // Remark that Recover doesn't take the node role into account
 func (s *Node) Recover(cluster []protocol.NodeInfo) error {
-	for i, _ := range cluster {
+	for i := range cluster {
 		cluster[i].Role = protocol.Voter
 	}
 	return s.RecoverExt(cluster)
@@ -299,10 +300,12 @@ func connectWithDial(handle C.uintptr_t, address *C.char, fd *C.int) C.int {
 }
 
 // Use handles to avoid passing Go pointers to C.
-var contextRegistry = make(map[C.uintptr_t]context.Context)
-var connectRegistry = make(map[C.uintptr_t]protocol.DialFunc)
-var connectIndex C.uintptr_t = 100
-var connectLock = sync.Mutex{}
+var (
+	contextRegistry = make(map[C.uintptr_t]context.Context)
+	connectRegistry = make(map[C.uintptr_t]protocol.DialFunc)
+	connectIndex    = C.uintptr_t(100)
+	connectLock     = sync.Mutex{}
+)
 
 // ErrNodeStopped is returned by Node.Handle() is the server was stopped.
 var ErrNodeStopped = fmt.Errorf("server was stopped")

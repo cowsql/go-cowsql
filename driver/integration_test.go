@@ -62,7 +62,7 @@ func assertEqualError(t *testing.T, err error, msg string) {
 	}
 }
 
-func requireNil(t *testing.T, x interface{}) {
+func requireNil(t *testing.T, x any) {
 	t.Helper()
 
 	if x != nil {
@@ -78,7 +78,7 @@ func requireNil(t *testing.T, x interface{}) {
 	}
 }
 
-func requireNotNil(t *testing.T, x interface{}) {
+func requireNotNil(t *testing.T, x any) {
 	t.Helper()
 
 	if x == nil {

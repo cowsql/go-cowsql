@@ -33,7 +33,7 @@ func requireNoError(t *testing.T, err error) {
 	}
 }
 
-func requireEqual(t *testing.T, expected, actual interface{}) {
+func requireEqual(t *testing.T, expected, actual any) {
 	t.Helper()
 	if expected == nil || actual == nil {
 		if expected != actual {

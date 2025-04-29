@@ -6,11 +6,11 @@ import (
 )
 
 // Func is a function that can be used for logging.
-type Func func(Level, string, ...interface{})
+type Func func(Level, string, ...any)
 
 // Test returns a logging function that forwards messages to the test logger.
 func Test(t *testing.T) Func {
-	return func(l Level, format string, a ...interface{}) {
+	return func(l Level, format string, a ...any) {
 		format = fmt.Sprintf("%s: %s", l.String(), format)
 		t.Logf(format, a...)
 	}
@@ -19,7 +19,7 @@ func Test(t *testing.T) Func {
 // Stdout returns a logging function that prints log messages on standard
 // output.
 func Stdout() Func {
-	return func(l Level, format string, a ...interface{}) {
+	return func(l Level, format string, a ...any) {
 		format = fmt.Sprintf("%s: %s\n", l.String(), format)
 		fmt.Printf(format, a...)
 	}

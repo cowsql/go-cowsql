@@ -12,16 +12,18 @@ const (
 	kvReadWrite workload = iota
 )
 
-type Option func(*options)
-type options struct {
-	cluster        []string
-	clusterTimeout time.Duration
-	workload       workload
-	duration       time.Duration
-	nWorkers       int
-	kvKeySizeB     int
-	kvValueSizeB   int
-}
+type (
+	Option  func(*options)
+	options struct {
+		cluster        []string
+		clusterTimeout time.Duration
+		workload       workload
+		duration       time.Duration
+		nWorkers       int
+		kvKeySizeB     int
+		kvValueSizeB   int
+	}
+)
 
 func parseWorkload(workload string) workload {
 	switch strings.ToLower(workload) {

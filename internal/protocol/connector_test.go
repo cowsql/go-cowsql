@@ -314,7 +314,7 @@ func TestConnector_AttemptTimeout(t *testing.T) {
 // assert that the collected messages match the given ones.
 func newLogFunc(t *testing.T) (logging.Func, func([]string)) {
 	messages := []string{}
-	log := func(l logging.Level, format string, a ...interface{}) {
+	log := func(l logging.Level, format string, a ...any) {
 		message := l.String() + ": " + fmt.Sprintf(format, a...)
 		messages = append(messages, message)
 		t.Log(message)
