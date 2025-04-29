@@ -2,11 +2,11 @@ package cowsql
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cowsql/go-cowsql/client"
 	"github.com/cowsql/go-cowsql/internal/bindings"
-	"github.com/pkg/errors"
 )
 
 // Node runs a cowsql node.
@@ -179,7 +179,7 @@ func (s *Node) Close() error {
 	s.cancel()
 	// Send a stop signal to the cowsql event loop.
 	if err := s.server.Stop(); err != nil {
-		return errors.Wrap(err, "server failed to stop")
+		return fmt.Errorf("server failed to stop: %w", err)
 	}
 
 	s.server.Close()

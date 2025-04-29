@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -17,7 +18,6 @@ import (
 	"github.com/cowsql/go-cowsql/client"
 	"github.com/cowsql/go-cowsql/driver"
 	"github.com/cowsql/go-cowsql/internal/protocol"
-	"github.com/pkg/errors"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -469,8 +469,8 @@ func (a *App) Open(ctx context.Context, database string) (*sql.DB, error) {
 		if err == nil {
 			break
 		}
-		cause := errors.Cause(err)
-		if cause != driver.ErrNoAvailableLeader {
+
+		if !errors.Is(err, driver.ErrNoAvailableLeader) {
 			return nil, err
 		}
 		time.Sleep(time.Second)

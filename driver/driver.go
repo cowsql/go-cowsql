@@ -17,6 +17,7 @@ package driver
 import (
 	"context"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -24,8 +25,6 @@ import (
 	"reflect"
 	"syscall"
 	"time"
-
-	"github.com/pkg/errors"
 
 	"github.com/cowsql/go-cowsql/client"
 	"github.com/cowsql/go-cowsql/internal/protocol"
@@ -258,7 +257,7 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 	var err error
 	conn.protocol, err = connector.Connect(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create cowsql connection")
+		return nil, fmt.Errorf("failed to create cowsql connection: %w", err)
 	}
 
 	conn.request.Init(4096)
@@ -268,13 +267,13 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	if err := conn.protocol.Call(ctx, &conn.request, &conn.response); err != nil {
 		conn.protocol.Close()
-		return nil, errors.Wrap(err, "failed to open database")
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	conn.id, err = protocol.DecodeDb(&conn.response)
 	if err != nil {
 		conn.protocol.Close()
-		return nil, errors.Wrap(err, "failed to open database")
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	return conn, nil
@@ -794,15 +793,21 @@ type unwrappable interface {
 // possibly returning ErrBadCon.
 // https://cs.opensource.google/go/go/+/refs/tags/go1.20.4:src/database/sql/driver/driver.go;drc=a32a592c8c14927c20ac42808e1fb2e55b2e9470;l=162
 func driverError(log client.LogFunc, err error) error {
-	switch err := errors.Cause(err).(type) {
-	case syscall.Errno:
-		log(client.LogDebug, "network connection lost: %v", err)
+	errno := syscall.Errno(0)
+	if errors.As(err, &errno) && errno != 0 {
+		log(client.LogDebug, "network connection lost: %v", errno.Error())
 		return driver.ErrBadConn
-	case *net.OpError:
-		log(client.LogDebug, "network connection lost: %v", err)
+	}
+
+	netErr := &net.OpError{}
+	if errors.As(err, &netErr) && netErr != nil {
+		log(client.LogDebug, "network connection lost: %v", netErr.Error())
 		return driver.ErrBadConn
-	case protocol.ErrRequest:
-		switch err.Code {
+	}
+
+	pErr := protocol.ErrRequest{}
+	if errors.As(err, &pErr) {
+		switch pErr.Code {
 		case errIoErrNotLeaderLegacy:
 			fallthrough
 		case errIoErrLeadershipLostLegacy:
@@ -810,42 +815,45 @@ func driverError(log client.LogFunc, err error) error {
 		case errIoErrNotLeader:
 			fallthrough
 		case errIoErrLeadershipLost:
-			log(client.LogDebug, "leadership lost (%d - %s)", err.Code, err.Description)
+			log(client.LogDebug, "leadership lost (%d - %s)", pErr.Code, pErr.Description)
 			return driver.ErrBadConn
 		case errNotFound:
-			log(client.LogDebug, "not found - potentially after leadership loss (%d - %s)", err.Code, err.Description)
+			log(client.LogDebug, "not found - potentially after leadership loss (%d - %s)", pErr.Code, pErr.Description)
 			return driver.ErrBadConn
 		default:
 			// FIXME: the server side sometimes return SQLITE_OK
 			// even in case of errors. This issue is still being
 			// investigated, but for now let's just mark this
 			// connection as bad so the client will retry.
-			if err.Code == 0 {
-				log(client.LogWarn, "unexpected error code (%d - %s)", err.Code, err.Description)
+			if pErr.Code == 0 {
+				log(client.LogWarn, "unexpected error code (%d - %s)", pErr.Code, pErr.Description)
 				return driver.ErrBadConn
 			}
 			return Error{
-				Code:    int(err.Code),
-				Message: err.Description,
+				Code:    int(pErr.Code),
+				Message: pErr.Description,
 			}
 		}
-	default:
-		// When using a TLS connection, the underlying error might get
-		// wrapped by the stdlib itself with the new errors wrapping
-		// conventions available since go 1.13. In that case we check
-		// the underlying error with Unwrap() instead of Cause().
-		if root, ok := err.(unwrappable); ok {
-			err = root.Unwrap()
-		}
-		switch err.(type) {
-		case *net.OpError:
-			log(client.LogDebug, "network connection lost: %v", err)
-			return driver.ErrBadConn
-		}
 	}
+
+	// When using a TLS connection, the underlying error might get
+	// wrapped by the stdlib itself with the new errors wrapping
+	// conventions available since go 1.13. In that case we check
+	// the underlying error with Unwrap() instead of Cause().
+	// Below error handling should be covered by net.OpError handling above.
+	// if root, ok := err.(unwrappable); ok {
+	// 	err = root.Unwrap()
+	// }
+	// switch err.(type) {
+	// case *net.OpError:
+	// 	log(client.LogDebug, "network connection lost: %v", err)
+	// 	return driver.ErrBadConn
+	// }
+
 	if errors.Is(err, io.EOF) {
 		log(client.LogDebug, "EOF detected: %v", err)
 		return driver.ErrBadConn
 	}
+
 	return err
 }

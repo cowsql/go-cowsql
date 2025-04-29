@@ -3,12 +3,12 @@ package protocol
 import (
 	"context"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 // Protocol sends and receive the cowsql message on the wire.
@@ -46,9 +46,9 @@ func (p *Protocol) Call(ctx context.Context, request, response *Message) (err er
 		if err == nil {
 			return
 		}
-		switch errors.Cause(err).(type) {
-		case *net.OpError:
-			p.netErr = err
+		var netErr *net.OpError
+		if errors.As(err, &netErr) && netErr != nil {
+			p.netErr = netErr
 		}
 	}()
 
@@ -64,11 +64,11 @@ func (p *Protocol) Call(ctx context.Context, request, response *Message) (err er
 	desc := requestDesc(request.mtype)
 
 	if err = p.send(request); err != nil {
-		return errors.Wrapf(err, "call %s (budget %s): send", desc, budget)
+		return fmt.Errorf("call %s (budget %s): send: %w", desc, budget, err)
 	}
 
 	if err = p.recv(response); err != nil {
-		return errors.Wrapf(err, "call %s (budget %s): receive", desc, budget)
+		return fmt.Errorf("call %s (budget %s): receive: %w", desc, budget, err)
 	}
 
 	return
@@ -96,12 +96,12 @@ func (p *Protocol) Interrupt(ctx context.Context, request *Message, response *Me
 	EncodeInterrupt(request, 0)
 
 	if err := p.send(request); err != nil {
-		return errors.Wrap(err, "failed to send interrupt request")
+		return fmt.Errorf("failed to send interrupt request: %w", err)
 	}
 
 	for {
 		if err := p.recv(response); err != nil {
-			return errors.Wrap(err, "failed to receive response")
+			return fmt.Errorf("failed to receive response: %w", err)
 		}
 
 		mtype, _ := response.getHeader()
@@ -122,11 +122,11 @@ func (p *Protocol) Close() error {
 
 func (p *Protocol) send(req *Message) error {
 	if err := p.sendHeader(req); err != nil {
-		return errors.Wrap(err, "header")
+		return fmt.Errorf("header: %w", err)
 	}
 
 	if err := p.sendBody(req); err != nil {
-		return errors.Wrap(err, "body")
+		return fmt.Errorf("body: %w", err)
 	}
 
 	return nil
@@ -163,11 +163,11 @@ func (p *Protocol) recv(res *Message) error {
 	res.reset()
 
 	if err := p.recvHeader(res); err != nil {
-		return errors.Wrap(err, "header")
+		return fmt.Errorf("header: %w", err)
 	}
 
 	if err := p.recvBody(res); err != nil {
-		return errors.Wrap(err, "body")
+		return fmt.Errorf("body: %w", err)
 	}
 
 	return nil

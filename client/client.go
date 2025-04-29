@@ -2,9 +2,9 @@ package client
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cowsql/go-cowsql/internal/protocol"
-	"github.com/pkg/errors"
 )
 
 // DialFunc is a function that can be used to establish a network connection.
@@ -50,7 +50,7 @@ func New(ctx context.Context, address string, options ...Option) (*Client, error
 	// Establish the connection.
 	conn, err := o.DialFunc(ctx, address)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to establish network connection")
+		return nil, fmt.Errorf("failed to establish network connection: %w", err)
 	}
 
 	protocol, err := protocol.Handshake(ctx, conn, protocol.VersionOne)
@@ -74,12 +74,12 @@ func (c *Client) Leader(ctx context.Context) (*NodeInfo, error) {
 	protocol.EncodeLeader(&request)
 
 	if err := c.protocol.Call(ctx, &request, &response); err != nil {
-		return nil, errors.Wrap(err, "failed to send Leader request")
+		return nil, fmt.Errorf("failed to send Leader request: %w", err)
 	}
 
 	id, address, err := protocol.DecodeNode(&response)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse Node response")
+		return nil, fmt.Errorf("failed to parse Node response: %w", err)
 	}
 
 	info := &NodeInfo{ID: id, Address: address}
@@ -97,12 +97,12 @@ func (c *Client) Cluster(ctx context.Context) ([]NodeInfo, error) {
 	protocol.EncodeCluster(&request, protocol.ClusterFormatV1)
 
 	if err := c.protocol.Call(ctx, &request, &response); err != nil {
-		return nil, errors.Wrap(err, "failed to send Cluster request")
+		return nil, fmt.Errorf("failed to send Cluster request: %w", err)
 	}
 
 	servers, err := protocol.DecodeNodes(&response)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse Node response")
+		return nil, fmt.Errorf("failed to parse Node response: %w", err)
 	}
 
 	return servers, nil
@@ -127,12 +127,12 @@ func (c *Client) Dump(ctx context.Context, dbname string) ([]File, error) {
 	protocol.EncodeDump(&request, dbname)
 
 	if err := c.protocol.Call(ctx, &request, &response); err != nil {
-		return nil, errors.Wrap(err, "failed to send dump request")
+		return nil, fmt.Errorf("failed to send dump request: %w", err)
 	}
 
 	files, err := protocol.DecodeFiles(&response)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse files response")
+		return nil, fmt.Errorf("failed to parse files response: %w", err)
 	}
 	defer files.Close()
 

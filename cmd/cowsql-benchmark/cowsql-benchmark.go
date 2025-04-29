@@ -10,7 +10,6 @@ import (
 
 	"github.com/cowsql/go-cowsql/app"
 	"github.com/cowsql/go-cowsql/benchmark"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 )
@@ -70,8 +69,8 @@ func main() {
 		Long:  docString,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := filepath.Join(dir, db)
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				return errors.Wrapf(err, "can't create %s", dir)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return fmt.Errorf("can't create %s: %w", dir, err)
 			}
 
 			app, err := app.New(dir, app.WithAddress(db), app.WithCluster(*join))
@@ -82,7 +81,7 @@ func main() {
 			readyCtx, cancel := context.WithTimeout(context.Background(), time.Duration(clusterTimeout)*time.Second)
 			defer cancel()
 			if err := app.Ready(readyCtx); err != nil {
-				return errors.Wrap(err, "App not ready in time")
+				return fmt.Errorf("App not ready in time: %w", err)
 			}
 
 			ch := signalChannel()
