@@ -129,13 +129,13 @@ func (s *Shell) processCluster(ctx context.Context, line string) (string, error)
 		}
 		var indented bytes.Buffer
 		json.Indent(&indented, data, "", "\t")
-		result = string(indented.Bytes())
+		result = indented.String()
 	}
 
 	return result, nil
 }
 
-func (s *Shell) processLeader(ctx context.Context, line string) (string, error) {
+func (s *Shell) processLeader(ctx context.Context, _ string) (string, error) {
 	cli, err := client.FindLeader(ctx, s.store, client.WithDialFunc(s.dial))
 	if err != nil {
 		return "", err
@@ -203,7 +203,7 @@ func (s *Shell) processDescribe(ctx context.Context, line string) (string, error
 		}
 		var indented bytes.Buffer
 		json.Indent(&indented, data, "", "\t")
-		result = string(indented.Bytes())
+		result = indented.String()
 	}
 
 	return result, nil
@@ -248,26 +248,30 @@ func (s *Shell) processDump(ctx context.Context, line string) (string, error) {
 func (s *Shell) processReconfigure(ctx context.Context, line string) (string, error) {
 	parts := strings.Split(line, " ")
 	if len(parts) != 3 {
-		return "NOK", fmt.Errorf("bad command format, should be: .reconfigure <dir> <clusteryaml>\n" +
-			"Args:\n" +
-			"\tdir - Directory of node with up to date data\n" +
-			"\tclusteryaml - Path to a .yaml file containing the desired cluster configuration\n\n" +
-			"Help:\n" +
-			"\tUse this command when trying to preserve the data from your cluster while changing the\n" +
-			"\tconfiguration of the cluster because e.g. your cluster is broken due to unreachablee nodes.\n" +
-			"\t0. BACKUP ALL YOUR NODE DATA DIRECTORIES BEFORE PROCEEDING!\n" +
-			"\t1. Stop all cowsql nodes.\n" +
-			"\t2. Identify the dir of the node with the most up to date raft term and log, this will be the <dir> argument.\n" +
-			"\t3. Create a .yaml file with the same format as cluster.yaml (or use/adapt an existing cluster.yaml) with the\n " +
-			"\t   desired cluster configuration. This will be the <clusteryaml> argument.\n" +
-			"\t   Don't forget to make sure the ID's in the file line up with the ID's in the info.yaml files.\n" +
-			"\t4. Run the .reconfigure <dir> <clusteryaml> command, it should return \"OK\".\n" +
-			"\t5. Copy the snapshot-xxx-xxx-xxx, snapshot-xxx-xxx-xxx.meta, segment files (00000xxxxx-000000xxxxx), desired cluster.yaml\n" +
-			"\t   from <dir> over to the directories of the other nodes identified in <clusteryaml>, deleting any leftover snapshot-xxx-xxx-xxx, snapshot-xxx-xxx-xxx.meta,\n" +
-			"\t   segment (00000xxxxx-000000xxxxx, open-xxx) and metadata{1,2} files that it contains.\n" +
-			"\t   Make sure an info.yaml is also present that is in line with cluster.yaml.\n" +
-			"\t6. Start all the cowsql nodes.\n" +
-			"\t7. If, for some reason, this fails or gives undesired results, try again with data from another node (you should still have this from step 0).\n")
+		msg := `bad command format, should be: .reconfigure <dir> <clusteryaml>
+Args:
+  dir - Directory of node with up to date data\n" +
+  clusteryaml - Path to a .yaml file containing the desired cluster configuration
+
+
+Help:
+  Use this command when trying to preserve the data from your cluster while changing the
+  configuration of the cluster because e.g. your cluster is broken due to unreachablee nodes.
+  0. BACKUP ALL YOUR NODE DATA DIRECTORIES BEFORE PROCEEDING!
+  1. Stop all cowsql nodes.
+  2. Identify the dir of the node with the most up to date raft term and log, this will be the <dir> argument.
+  3. Create a .yaml file with the same format as cluster.yaml (or use/adapt an existing cluster.yaml) with the
+     desired cluster configuration. This will be the <clusteryaml> argument.
+     Don't forget to make sure the ID's in the file line up with the ID's in the info.yaml files.
+  4. Run the .reconfigure <dir> <clusteryaml> command, it should return "OK".
+  5. Copy the snapshot-xxx-xxx-xxx, snapshot-xxx-xxx-xxx.meta, segment files (00000xxxxx-000000xxxxx), desired cluster.yaml
+     from <dir> over to the directories of the other nodes identified in <clusteryaml>, deleting any leftover snapshot-xxx-xxx-xxx, snapshot-xxx-xxx-xxx.meta,
+     segment (00000xxxxx-000000xxxxx, open-xxx) and metadata{1,2} files that it contains.
+     Make sure an info.yaml is also present that is in line with cluster.yaml.
+  6. Start all the cowsql nodes.
+  7. If, for some reason, this fails or gives undesired results, try again with data from another node (you should still have this from step 0).
+`
+		return "NOK", shellError(msg)
 	}
 	dir := parts[1]
 	clusteryamlpath := parts[2]
@@ -379,23 +383,8 @@ func (s *Shell) processQuery(ctx context.Context, line string) (string, error) {
 	return strings.TrimRight(sb.String(), "\n"), nil
 }
 
-func (s *Shell) processExec(ctx context.Context, line string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
+type shellError string
 
-	if _, err := tx.Exec(line); err != nil {
-		err = fmt.Errorf("exec: %w", err)
-		if rbErr := tx.Rollback(); rbErr != nil {
-			return fmt.Errorf("unable to rollback: %v", err)
-		}
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit: %w", err)
-	}
-
-	return nil
+func (s shellError) Error() string {
+	return string(s)
 }
