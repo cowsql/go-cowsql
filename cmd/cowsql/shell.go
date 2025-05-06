@@ -1,4 +1,4 @@
-package shell
+package main
 
 import (
 	"bytes"
@@ -26,7 +26,7 @@ type Shell struct {
 }
 
 // New creates a new Shell connected to the given database.
-func New(database string, store client.NodeStore, options ...Option) (*Shell, error) {
+func NewShell(database string, store client.NodeStore, options ...Option) (*Shell, error) {
 	o := defaultOptions()
 
 	for _, option := range options {

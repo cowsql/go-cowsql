@@ -1,7 +1,9 @@
 .sqlite
 cmd/cowsql/cowsql
 cmd/cowsql-demo/cowsql-demo
-cowsql
-cowsql-demo
+cmd/cowsql-benchmark/cowsql-benchmark
+./cowsql
+./cowsql-demo
+./cowsql-benchmark
 profile.coverprofile
 overalls.coverprofile

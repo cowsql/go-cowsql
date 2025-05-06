@@ -11,7 +11,6 @@ import (
 
 	"github.com/cowsql/go-cowsql/app"
 	"github.com/cowsql/go-cowsql/client"
-	"github.com/cowsql/go-cowsql/internal/shell"
 	"github.com/peterh/liner"
 	"github.com/spf13/cobra"
 )
@@ -83,7 +82,7 @@ func main() {
 
 			}
 
-			sh, err := shell.New(args[0], store, shell.WithDialFunc(dial), shell.WithFormat(format))
+			sh, err := NewShell(args[0], store, WithDialFunc(dial), WithFormat(format))
 			if err != nil {
 				return err
 			}
