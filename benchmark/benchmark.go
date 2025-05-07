@@ -68,7 +68,6 @@ func (bm *Benchmark) kvSetup() error {
 
 func (bm *Benchmark) setup() error {
 	switch bm.options.workload {
-
 	default:
 		return bm.kvSetup()
 	}
@@ -93,7 +92,7 @@ func (bm *Benchmark) reportFiles() map[string]string {
 
 func (bm *Benchmark) reportResults() error {
 	dir := path.Join(bm.dir, "results")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create %v: %v", dir, err)
 	}
 
@@ -170,7 +169,6 @@ func (bm *Benchmark) waitForCluster(ch <-chan os.Signal) error {
 	case <-ch:
 		return fmt.Errorf("benchmark stopped, signal received while waiting for cluster")
 	}
-
 }
 
 func (bm *Benchmark) Run(ch <-chan os.Signal) error {

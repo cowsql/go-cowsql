@@ -13,11 +13,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/cowsql/go-cowsql/app"
 	"github.com/cowsql/go-cowsql/client"
 	"github.com/spf13/cobra"
-	"golang.org/x/sys/unix"
 )
 
 func main() {
@@ -40,7 +40,7 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return fmt.Errorf("can't create %s: %w", dir, err)
 			}
-			logFunc := func(l client.LogLevel, format string, a ...interface{}) {
+			logFunc := func(l client.LogLevel, format string, a ...any) {
 				if !verbose {
 					return
 				}
@@ -118,10 +118,10 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 			go http.Serve(listener, nil)
 
 			ch := make(chan os.Signal, 32)
-			signal.Notify(ch, unix.SIGPWR)
-			signal.Notify(ch, unix.SIGINT)
-			signal.Notify(ch, unix.SIGQUIT)
-			signal.Notify(ch, unix.SIGTERM)
+			signal.Notify(ch, syscall.SIGPWR)
+			signal.Notify(ch, syscall.SIGINT)
+			signal.Notify(ch, syscall.SIGQUIT)
+			signal.Notify(ch, syscall.SIGTERM)
 
 			<-ch
 

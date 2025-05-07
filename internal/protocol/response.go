@@ -6,7 +6,6 @@ package protocol
 
 import "fmt"
 
-
 // DecodeFailure decodes a Failure response.
 func DecodeFailure(response *Message) (code uint64, message string, err error) {
 	mtype, _ := response.getHeader()

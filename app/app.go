@@ -459,12 +459,13 @@ func (a *App) Ready(ctx context.Context) error {
 
 // Open the cowsql database with the given name
 func (a *App) Open(ctx context.Context, database string) (*sql.DB, error) {
+	a.info("open database: %", database)
 	db, err := sql.Open(a.Driver(), database)
 	if err != nil {
 		return nil, err
 	}
 
-	for i := 0; i < 60; i++ {
+	for range 60 {
 		err = db.PingContext(ctx)
 		if err == nil {
 			break
@@ -638,9 +639,12 @@ func (a *App) maybeAdjustRoles(ctx context.Context, cli *client.Client) error {
 again:
 	info, err := cli.Leader(ctx)
 	if err != nil {
+		a.error("failed to get leader: %v", err)
 		return err
 	}
+
 	if info.ID != a.id {
+		a.debug("%s is not leader: %s", a.id, info.ID)
 		return nil
 	}
 
@@ -653,6 +657,7 @@ again:
 
 	role, nodes := roles.Adjust(a.id)
 	if role == -1 {
+		a.debug("does not meet role adjust requirement")
 		return nil
 	}
 
@@ -723,18 +728,18 @@ func (a *App) clientOptions() []client.Option {
 	return []client.Option{client.WithDialFunc(a.dialFunc), client.WithLogFunc(a.log)}
 }
 
-func (a *App) debug(format string, args ...interface{}) {
+func (a *App) debug(format string, args ...any) {
 	a.log(client.LogDebug, format, args...)
 }
 
-func (a *App) info(format string, args ...interface{}) {
+func (a *App) info(format string, args ...any) {
 	a.log(client.LogInfo, format, args...)
 }
 
-func (a *App) warn(format string, args ...interface{}) {
+func (a *App) warn(format string, args ...any) {
 	a.log(client.LogWarn, format, args...)
 }
 
-func (a *App) error(format string, args ...interface{}) {
+func (a *App) error(format string, args ...any) {
 	a.log(client.LogError, format, args...)
 }

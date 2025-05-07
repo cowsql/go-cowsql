@@ -10,8 +10,10 @@ import (
 	"time"
 )
 
-type work int
-type workerType int
+type (
+	work       int
+	workerType int
+)
 
 func (w work) String() string {
 	switch w {
@@ -48,7 +50,7 @@ const (
 type worker struct {
 	workerType   workerType
 	lastWork     work
-	lastArgs     []interface{}
+	lastArgs     []any
 	tracker      *tracker
 	kvKeySizeB   int
 	kvValueSizeB int
@@ -84,21 +86,21 @@ func (w *worker) randValue() string {
 }
 
 // Returns the type of work to execute and a sql statement with arguments
-func (w *worker) getWork() (work, string, []interface{}) {
+func (w *worker) getWork() (work, string, []any) {
 	switch w.workerType {
 	case kvWriter:
 		k, v := w.randNewKey(), w.randValue()
-		return exec, kvWriteSql, []interface{}{k, v}
+		return exec, kvWriteSql, []any{k, v}
 	case kvReaderWriter:
 		read := rand.Intn(2) == 0
 		if read && len(w.kvKeys) != 0 {
 			k, _ := w.randExistingKey()
-			return query, kvReadSql, []interface{}{k}
+			return query, kvReadSql, []any{k}
 		}
 		k, v := w.randNewKey(), w.randValue()
-		return exec, kvWriteSql, []interface{}{k, v}
+		return exec, kvWriteSql, []any{k, v}
 	default:
-		return none, "", []interface{}{}
+		return none, "", []any{}
 	}
 }
 

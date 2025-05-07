@@ -1,4 +1,4 @@
-// +build !nosqlite3
+//go:build !nosqlite3
 
 package bindings
 

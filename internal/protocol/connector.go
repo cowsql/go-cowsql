@@ -72,7 +72,7 @@ func (c *Connector) Connect(ctx context.Context) (*Protocol, error) {
 	// The retry strategy should be configured to retry indefinitely, until
 	// the given context is done.
 	err := retry.Retry(func(attempt uint) error {
-		log := func(l logging.Level, format string, a ...interface{}) {
+		log := func(l logging.Level, format string, a ...any) {
 			format = fmt.Sprintf("attempt %d: ", attempt) + format
 			c.log(l, format, a...)
 		}
@@ -127,7 +127,7 @@ func (c *Connector) connectAttemptAll(ctx context.Context, log logging.Func) (*P
 
 	// Make an attempt for each address until we find the leader.
 	for _, server := range servers {
-		log := func(l logging.Level, format string, a ...interface{}) {
+		log := func(l logging.Level, format string, a ...any) {
 			format = fmt.Sprintf("server %s: ", server.Address) + format
 			log(l, format, a...)
 		}
