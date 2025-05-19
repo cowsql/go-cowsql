@@ -172,7 +172,7 @@ func TestNew_SecondJoiner(t *testing.T) {
 func TestNew_ThirdJoiner(t *testing.T) {
 	apps := []*app.App{}
 
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
@@ -205,7 +205,7 @@ func TestNew_ThirdJoiner(t *testing.T) {
 func TestNew_FourthJoiner(t *testing.T) {
 	apps := []*app.App{}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
@@ -239,7 +239,7 @@ func TestNew_FourthJoiner(t *testing.T) {
 func TestNew_FifthJoiner(t *testing.T) {
 	apps := []*app.App{}
 
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
@@ -274,7 +274,7 @@ func TestNew_FifthJoiner(t *testing.T) {
 func TestNew_SixthJoiner(t *testing.T) {
 	apps := []*app.App{}
 
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
@@ -311,7 +311,7 @@ func TestHandover_Voter(t *testing.T) {
 	n := 4
 	apps := make([]*app.App, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
@@ -355,7 +355,7 @@ func TestHandover_TwoNodes(t *testing.T) {
 	n := 2
 	apps := make([]*app.App, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
@@ -390,7 +390,7 @@ func TestHandover_VoterHonorFailureDomain(t *testing.T) {
 	n := 6
 	apps := make([]*app.App, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{
 			app.WithAddress(addr),
@@ -447,7 +447,7 @@ func TestHandover_GracefulShutdown(t *testing.T) {
 	n := 3
 	apps := make([]*app.App, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		dir, cleanup := newDir(t)
 		defer cleanup()
 
@@ -490,7 +490,7 @@ func TestHandover_StandBy(t *testing.T) {
 	n := 7
 	apps := make([]*app.App, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
@@ -539,7 +539,7 @@ func TestHandover_TransferLeadership(t *testing.T) {
 	n := 4
 	apps := make([]*app.App, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
@@ -589,7 +589,7 @@ func TestRolesAdjustment_ReplaceVoter(t *testing.T) {
 	apps := make([]*app.App, n)
 	cleanups := make([]func(), n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{
 			app.WithAddress(addr),
@@ -637,7 +637,7 @@ func TestRolesAdjustment_ReplaceVoterHonorFailureDomain(t *testing.T) {
 	apps := make([]*app.App, n)
 	cleanups := make([]func(), n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{
 			app.WithAddress(addr),
@@ -690,7 +690,7 @@ func TestRolesAdjustment_ReplaceVoterHonorWeight(t *testing.T) {
 	apps := make([]*app.App, n)
 	cleanups := make([]func(), n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{
 			app.WithAddress(addr),
@@ -757,7 +757,7 @@ func TestRolesAdjustment_CantReplaceVoter(t *testing.T) {
 	apps := make([]*app.App, n)
 	cleanups := make([]func(), n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{
 			app.WithAddress(addr),
@@ -803,7 +803,7 @@ func TestRolesAdjustment_ReplaceStandBy(t *testing.T) {
 	apps := make([]*app.App, n)
 	cleanups := make([]func(), n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{
 			app.WithAddress(addr),
@@ -857,7 +857,7 @@ func TestRolesAdjustment_ReplaceStandByHonorFailureDomains(t *testing.T) {
 	apps := make([]*app.App, n)
 	cleanups := make([]func(), n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
 		options := []app.Option{
 			app.WithAddress(addr),
@@ -1138,7 +1138,7 @@ func TestExternalConnWithPipe(t *testing.T) {
 
 func TestParallelNewApp(t *testing.T) {
 	t.Parallel()
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		i := i
 		t.Run(fmt.Sprintf("run-%d", i), func(tt *testing.T) {
 			tt.Parallel()
