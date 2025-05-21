@@ -1,6 +1,7 @@
 package app
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/cowsql/go-cowsql/client"
@@ -97,7 +98,7 @@ func (c *RolesChanges) Handover(id uint64) (client.NodeRole, []client.NodeInfo) 
 	peers := c.list(node.Role, true)
 	for i := range peers {
 		if peers[i].ID == node.ID {
-			peers = append(peers[:i], peers[i+1:]...)
+			peers = slices.Delete(peers, i, i+1)
 			break
 		}
 	}

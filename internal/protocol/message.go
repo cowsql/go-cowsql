@@ -49,7 +49,7 @@ func (m *Message) reset() {
 	m.mtype = 0
 	m.schema = 0
 	m.extra = 0
-	for i := 0; i < messageHeaderSize; i++ {
+	for i := range messageHeaderSize {
 		m.header[i] = 0
 	}
 	m.body.Offset = 0
@@ -494,7 +494,7 @@ func (r *Rows) columnTypes(save bool) ([]uint8, error) {
 
 	headerSize := (headerBits + padBits) / messageWordBits * messageWordSize
 
-	for i := 0; i < headerSize; i++ {
+	for i := range headerSize {
 		slot := r.message.getUint8()
 
 		if slot == 0xee {

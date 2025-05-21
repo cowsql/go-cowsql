@@ -225,7 +225,7 @@ func TestIntegration_LargeQuery(t *testing.T) {
 	stmt, err := tx.Prepare("INSERT INTO test(n) VALUES(?)")
 	requireNoError(t, err)
 
-	for i := 0; i < 512; i++ {
+	for i := range 512 {
 		_, err = stmt.Exec(int64(i))
 		requireNoError(t, err)
 	}
