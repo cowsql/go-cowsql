@@ -1,4 +1,4 @@
-package shell
+package main
 
 import "github.com/cowsql/go-cowsql/client"
 
