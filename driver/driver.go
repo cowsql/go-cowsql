@@ -640,7 +640,7 @@ func (s *Stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 		return nil, driverError(s.log, err)
 	}
 
-	return &Rows{ctx: ctx, request: s.request, response: s.response, protocol: s.protocol, rows: rows}, nil
+	return &Rows{ctx: ctx, request: s.request, response: s.response, protocol: s.protocol, rows: rows, log: s.log}, nil
 }
 
 // Query executes a query that may return rows, such as a
@@ -793,6 +793,10 @@ type unwrappable interface {
 // possibly returning ErrBadCon.
 // https://cs.opensource.google/go/go/+/refs/tags/go1.20.4:src/database/sql/driver/driver.go;drc=a32a592c8c14927c20ac42808e1fb2e55b2e9470;l=162
 func driverError(log client.LogFunc, err error) error {
+	if log == nil {
+		log = client.DefaultLogFunc
+	}
+
 	errno := syscall.Errno(0)
 	if errors.As(err, &errno) && errno != 0 {
 		log(client.LogDebug, "network connection lost: %v", errno.Error())
