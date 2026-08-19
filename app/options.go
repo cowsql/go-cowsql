@@ -291,5 +291,5 @@ func defaultLogFunc(l client.LogLevel, format string, a ...any) {
 		return
 	}
 	msg := fmt.Sprintf("["+l.String()+"]"+" cowsql: "+format, a...)
-	log.Printf(msg)
+	log.Print(msg)
 }
