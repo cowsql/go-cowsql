@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/goccy/go-yaml"
-	"github.com/google/renameio"
+	"github.com/google/renameio/v2"
 
 	"github.com/cowsql/go-cowsql/internal/protocol"
 )

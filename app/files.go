@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/goccy/go-yaml"
-	"github.com/google/renameio"
+	"github.com/google/renameio/v2"
 )
 
 const (
