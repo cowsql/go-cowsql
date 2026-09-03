@@ -31,6 +31,10 @@ type Transactor interface {
 
 	// OnTxStartForce is similar to OnTxStart but the transaction body contains an explicitly opened transaction.
 	OnTxStartForce(exclusive bool, f func(ctx context.Context, tx TX) error) (func(ctx context.Context, tx TX) error, func())
+
+	// EnterExclusive should block the opening of any transactions after called.
+	// The Transactor's OnTxStart should handle clearing this state in its returned cleanup func.
+	EnterExclusive() error
 }
 
 type transaction interface {
@@ -100,22 +104,33 @@ func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(co
 
 	maxRetries := t.MaxRetries()
 
-	if force {
+	// Only assign tx if force is true, else it will be implicitly created inside doFunc.
+	forceTx := func(ctx context.Context) (TX, error) {
+		if !force {
+			return nil, nil
+		}
+
 		dbtx, err := BeginDBTX(ctx, t.DBTX())
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		tx, ok := dbtx.(TX)
 		if !ok {
-			return errors.New("Failed to open a transaction")
+			return nil, errors.New("Failed to open a transaction")
 		}
 
-		err = doFunc(ctx, tx)
-	} else if !force && !nestedTx && maxRetries > 0 {
-		// Ensure we only retry the outer "real" transaction.
+		return tx, nil
+	}
+
+	if !nestedTx && maxRetries > 0 {
 		err = Retry(ctx, maxRetries, func(ctx context.Context) error {
-			reason := doFunc(ctx, nil)
+			tx, err := forceTx(ctx)
+			if err != nil {
+				return err
+			}
+
+			reason := doFunc(ctx, tx)
 			if reason != nil {
 				err := Retry(context.Background(), maxRetries, func(_ context.Context) error { return trans.Rollback() })
 				if err != nil {
@@ -126,7 +141,13 @@ func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(co
 			return reason
 		})
 	} else {
-		err = doFunc(ctx, nil)
+		var tx TX
+		tx, err = forceTx(ctx)
+		if err != nil {
+			return err
+		}
+
+		err = doFunc(ctx, tx)
 	}
 
 	if err != nil {

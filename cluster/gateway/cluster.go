@@ -1,10 +1,9 @@
-//go:build !nosqlite3
+//go:build !nosqlite3 && !darwin
 
 package gateway
 
 import (
 	"context"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,8 +14,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
-
-	incustls "github.com/lxc/incus/v7/shared/tls"
 
 	"github.com/cowsql/go-cowsql/client"
 	"github.com/cowsql/go-cowsql/cluster"
@@ -31,7 +28,7 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/tls"
 )
 
-func NewGateway(shutdownCtx context.Context, db db.Node, networkCert *incustls.CertInfo, serverCert func() *incustls.CertInfo, state state.State, opts ...options.Option) (cluster.Gateway, error) {
+func NewGateway(shutdownCtx context.Context, db db.Node, networkCert tls.CertInfo, serverCert func() tls.CertInfo, state state.State, opts ...options.Option) (cluster.Gateway, error) {
 	ctx, cancel := context.WithCancel(context.TODO())
 
 	o := options.NewOptions()
@@ -82,7 +79,11 @@ func (g *gateway) UserConfig() *options.Options {
 }
 
 func (g *gateway) HeartbeatOfflineThreshold() time.Duration {
-	return g.heartbeatOfflineThreshold
+	if g.heartbeatOfflineThreshold != 0 {
+		return g.heartbeatOfflineThreshold
+	}
+
+	return g.UserConfig().DefaultOfflineThreshold()
 }
 
 func (g *gateway) SetHeartbeatOfflineThreshold(t time.Duration) {
@@ -97,7 +98,7 @@ func (g *gateway) Standalone() bool {
 	return g.memoryDial != nil
 }
 
-func (g *gateway) NetworkCert() *incustls.CertInfo {
+func (g *gateway) NetworkCert() tls.CertInfo {
 	return g.networkCert
 }
 
@@ -128,7 +129,7 @@ func (g *gateway) AwaitHeartbeat() {
 	g.heartbeatLock.Unlock() //nolint:staticcheck
 }
 
-func (g *gateway) ServerCert() *incustls.CertInfo {
+func (g *gateway) ServerCert() tls.CertInfo {
 	return g.serverCert()
 }
 
@@ -141,21 +142,15 @@ func (g *gateway) ServerCert() *incustls.CertInfo {
 // These handlers might return 404, either because this server is a
 // non-clustered member not available over the network or because it is not a
 // database node part of the cowsql cluster.
-func (g *gateway) HandlerFuncs(trustedCerts func() (map[string]x509.Certificate, error)) map[string]http.HandlerFunc {
+func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request) bool) map[string]http.HandlerFunc {
 	database := func(w http.ResponseWriter, r *http.Request) {
 		g.lock.RLock()
 
-		certs, err := trustedCerts()
-		if err != nil {
-			g.lock.RUnlock()
-			http.Error(w, "403 invalid client certificate", http.StatusForbidden)
-			return
-		}
-
-		if !tls.CheckCert(r, g.networkCert, g.serverCert(), certs) {
-			g.lock.RUnlock()
-			http.Error(w, "403 invalid client certificate", http.StatusForbidden)
-			return
+		if auth != nil {
+			trusted := auth(w, r)
+			if !trusted {
+				return
+			}
 		}
 
 		g.lock.RUnlock()
@@ -343,24 +338,12 @@ func (g *gateway) WaitUpgradeNotification() {
 	}
 }
 
-// IsCowsqlNode returns true if this gateway is running a cowsql node.
-func (g *gateway) IsCowsqlNode() bool {
+// Initialized returns true if this gateway has been initialized.
+func (g *gateway) Initialized() bool {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
 
-	if g.info != nil {
-		if g.server == nil {
-			panic("gateway has node identity but no cowsql server")
-		}
-
-		return true
-	}
-
-	if g.server != nil {
-		panic("gateway cowsql server but no node identity")
-	}
-
-	return true
+	return g.server != nil
 }
 
 // DialFunc returns a dial function that can be used to connect to one of the
@@ -405,11 +388,11 @@ func (g *gateway) NodeStore() client.NodeStore {
 	return g.store
 }
 
-// Kill is an API that the daemon calls before it actually shuts down and calls
+// Cancel is an API that the daemon calls before it actually shuts down and calls
 // Shutdown(). It will abort any ongoing or new attempt to establish a SQL gRPC
 // connection with the dialer (typically for running some pre-shutdown
 // queries).
-func (g *gateway) Kill() {
+func (g *gateway) Cancel() {
 	slog.Debug("Cancel ongoing or future gRPC connection attempts")
 	g.cancel()
 }
@@ -445,7 +428,7 @@ func (g *gateway) TransferLeadership(ctx context.Context) error {
 			return err
 		}
 
-		if !cluster.HasConnectivity(g.networkCert, g.serverCert(), address) {
+		if !cluster.HasConnectivity(g.networkCert, g.serverCert(), address, g.UserConfig().RestrictTLS()) {
 			continue
 		}
 
@@ -478,8 +461,8 @@ func (g *gateway) DemoteOfflineNode(raftID uint64) error {
 	return nil
 }
 
-// Shutdown this gateway, stopping the gRPC server and possibly the raft factory.
-func (g *gateway) Shutdown() error {
+// ShutdownServer this gateway, stopping the gRPC server and possibly the raft factory.
+func (g *gateway) ShutdownServer() error {
 	slog.Debug("Stop database gateway")
 
 	var err error
@@ -499,6 +482,21 @@ func (g *gateway) Shutdown() error {
 	}
 
 	return err
+}
+
+// Stop fully stops the gateway server, and both the local and global databases.
+func (g *gateway) Stop(connTimeout time.Duration) error {
+	// First prevent more connections.
+	g.Cancel()
+
+	// Then attempt to close the global database.
+	if g.Cluster() != nil {
+		closeOrLog("Cluster database failed to close", connTimeout, g.Cluster().DB().Close)
+	}
+
+	closeOrLog("Gateway failed to shutdown", connTimeout, g.ShutdownServer)
+
+	return g.Node().DB().Close()
 }
 
 // Sync dumps the content of the database to disk. This is useful for
@@ -533,7 +531,7 @@ func (g *gateway) Sync() {
 		return
 	}
 
-	dir := filepath.Join(g.db.Dir(), "global")
+	dir := g.db.GlobalDatabaseDir()
 	for _, file := range files {
 		path := filepath.Join(dir, file.Name)
 		err := os.WriteFile(path, file.Data, 0o600)
@@ -546,13 +544,13 @@ func (g *gateway) Sync() {
 // Reset the gateway, shutting it down.
 //
 // This is used when disabling clustering on a node.
-func (g *gateway) Reset(networkCert *incustls.CertInfo) error {
-	err := g.Shutdown()
+func (g *gateway) Reset(networkCert tls.CertInfo) error {
+	err := g.ShutdownServer()
 	if err != nil {
 		return err
 	}
 
-	err = os.RemoveAll(filepath.Join(g.db.Dir(), "global"))
+	err = os.RemoveAll(g.db.GlobalDatabaseDir())
 	if err != nil {
 		return err
 	}
@@ -579,7 +577,7 @@ func (g *gateway) HearbeatCancelFunc() func() {
 
 // NetworkUpdateCert sets a new network certificate for the gateway
 // Use with Endpoints.NetworkUpdateCert() to fully update the API endpoint.
-func (g *gateway) NetworkUpdateCert(cert *incustls.CertInfo) {
+func (g *gateway) NetworkUpdateCert(cert tls.CertInfo) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
@@ -682,7 +680,7 @@ func (g *gateway) LeaderAddress() (string, error) {
 		return "", errors.New("No raft node known")
 	}
 
-	transport, cleanup, err := tls.Transport(g.networkCert, g.serverCert())
+	transport, cleanup, err := tls.Transport(g.networkCert, g.serverCert(), g.UserConfig().RestrictTLS())
 	if err != nil {
 		return "", err
 	}
@@ -959,14 +957,14 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 	// Send stale set to all nodes in database to get a fresh set of active nodes.
 	if mode == heartbeat.HeartbeatInitial {
 		hbState.Update(false, raftNodes, members, g.heartbeatOfflineThreshold)
-		hbState.Send(ctx, g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
+		hbState.Send(ctx, g.UserConfig().RestrictTLS(), g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
 
 		// We have the latest set of node states now, lets send that state set to all nodes.
 		hbState.FullStateList = true
-		hbState.Send(ctx, g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
+		hbState.Send(ctx, g.UserConfig().RestrictTLS(), g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
 	} else {
 		hbState.Update(true, raftNodes, members, g.heartbeatOfflineThreshold)
-		hbState.Send(ctx, g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
+		hbState.Send(ctx, g.UserConfig().RestrictTLS(), g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
 	}
 
 	// Check if context has been cancelled.
@@ -1010,7 +1008,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		// If any new nodes found, send heartbeat to just them (with full node state).
 		if len(newMembers) > 0 {
 			hbState.Update(true, raftNodes, members, g.heartbeatOfflineThreshold)
-			hbState.Send(ctx, g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, newMembers, 0)
+			hbState.Send(ctx, g.UserConfig().RestrictTLS(), g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, newMembers, 0)
 		}
 	}
 

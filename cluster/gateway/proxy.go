@@ -6,8 +6,8 @@ import (
 	"net"
 	"time"
 
-	incustcp "github.com/lxc/incus/v7/shared/tcp"
-	"github.com/lxc/incus/v7/shared/util"
+	"github.com/cowsql/go-cowsql/cluster/internal/util/file"
+	"github.com/cowsql/go-cowsql/cluster/internal/util/tcp"
 )
 
 type cowsqlProxyError struct {
@@ -53,11 +53,11 @@ func cowsqlProxy(name string, stopCh chan struct{}, remote net.Conn, local net.C
 	l.Debug("Cowsql proxy started")
 	defer l.Debug("Cowsql proxy stopped")
 
-	remoteTCP, err := incustcp.ExtractConn(remote)
+	remoteTCP, err := tcp.ExtractConn(remote)
 	if err != nil {
 		l.Warn("Failed extracting TCP connection from remote connection", "err", err)
 	} else {
-		err := incustcp.SetTimeouts(remoteTCP, time.Second*30)
+		err := tcp.SetTimeouts(remoteTCP, time.Second*30)
 		if err != nil {
 			l.Warn("Failed setting TCP timeouts on remote connection", "err", err)
 		}
@@ -69,12 +69,12 @@ func cowsqlProxy(name string, stopCh chan struct{}, remote net.Conn, local net.C
 	// Start copying data back and forth until either the client or the
 	// server get closed or hit an error.
 	go func() {
-		_, err := util.SafeCopy(local, remote)
+		_, err := file.SafeCopy(local, remote)
 		remoteToLocal <- err
 	}()
 
 	go func() {
-		_, err := util.SafeCopy(remote, local)
+		_, err := file.SafeCopy(remote, local)
 		localToRemote <- err
 	}()
 

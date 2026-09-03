@@ -5,14 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"time"
 
 	"github.com/cowsql/go-cowsql/client"
 	"github.com/cowsql/go-cowsql/cluster"
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
-	incusproc "github.com/lxc/incus/v7/shared/subprocess"
 )
 
 // MaybeUpdate Check this node's version and possibly run the executable returned by PreUpdateCheck.
@@ -58,33 +56,17 @@ func MaybeUpdate(g cluster.Gateway) error {
 func TriggerUpdate(g cluster.Gateway) error {
 	slog.Warn("Member is out-of-date with respect to other cluster members")
 
-	updateExecutable, err := g.UserConfig().PreUpdateCheckFunc()()
+	updateFunc, err := g.UserConfig().PreUpdateCheckFunc()()
 	if err != nil {
 		return err
 	}
 
-	if updateExecutable == "" {
-		slog.Debug("No update executable, skipping auto-update")
+	if updateFunc == nil {
+		slog.Debug("No update check enabled, skipping auto-update")
 		return nil
 	}
 
-	// Wait a random amount of seconds (up to 30) in order to avoid
-	// restarting all cluster members at the same time, and make the
-	// upgrade more graceful.
-	wait := time.Duration(rand.Intn(30)) * time.Second
-	slog.Info("Triggering cluster auto-update soon", "wait", wait, "updateExecutable", updateExecutable)
-	time.Sleep(wait)
-
-	slog.Info("Triggering cluster auto-update now")
-	_, err = incusproc.RunCommand(updateExecutable)
-	if err != nil {
-		slog.Error("Triggering cluster update failed", "err", err)
-		return err
-	}
-
-	slog.Info("Triggering cluster auto-update succeeded")
-
-	return nil
+	return updateFunc()
 }
 
 // UpgradeMembersWithoutRole assigns the Spare raft role to all cluster members that are not currently part of the

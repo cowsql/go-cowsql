@@ -11,13 +11,11 @@ import (
 	"sync"
 	"time"
 
-	incusapi "github.com/lxc/incus/v7/shared/api"
-	incustls "github.com/lxc/incus/v7/shared/tls"
-
-	"github.com/cowsql/go-cowsql/cluster/api"
+	cowsqlapi "github.com/cowsql/go-cowsql/cluster/api"
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
-	"github.com/cowsql/go-cowsql/cluster/tls"
+	"github.com/cowsql/go-cowsql/cluster/internal/util/api"
+	cowsqltls "github.com/cowsql/go-cowsql/cluster/tls"
 )
 
 // Hook represents a function that can be called as the heartbeat hook.
@@ -138,7 +136,7 @@ func (hbState *APIHeartbeat) Update(fullStateList bool, raftNodes []db.RaftNode,
 		_ = transaction.Do(context.TODO(), hbState.cluster, func(ctx context.Context) error {
 			tx := hbState.cluster
 			for addr, raftNode := range raftNodeMap {
-				_, err := tx.GetPendingNodeByAddress(ctx, addr)
+				_, err := tx.GetNodeByAddress(ctx, addr, true)
 				if err != nil {
 					slog.Error("Unaccounted raft node(s) not found in 'nodes' table for heartbeat", "id", raftNode.ID, "address", raftNode.Address)
 				}
@@ -150,7 +148,7 @@ func (hbState *APIHeartbeat) Update(fullStateList bool, raftNodes []db.RaftNode,
 }
 
 // Send sends heartbeat requests to the nodes supplied and updates heartbeat state.
-func (hbState *APIHeartbeat) Send(ctx context.Context, databaseEndpoint string, networkCert *incustls.CertInfo, serverCert *incustls.CertInfo, localAddress string, nodes []db.NodeInfo, spreadDuration time.Duration) {
+func (hbState *APIHeartbeat) Send(ctx context.Context, useTLS12 bool, databaseEndpoint string, networkCert cowsqltls.CertInfo, serverCert cowsqltls.CertInfo, localAddress string, nodes []db.NodeInfo, spreadDuration time.Duration) {
 	// Find the local member name for warning management.
 	var localName string
 	for _, node := range nodes {
@@ -181,12 +179,13 @@ func (hbState *APIHeartbeat) Send(ctx context.Context, databaseEndpoint string, 
 		heartbeatData.Time = time.Now().UTC()
 
 		// Don't use ctx here, as we still want to finish off the request if the ctx has been cancelled.
-		err := HeartbeatNode(context.Background(), databaseEndpoint, address, networkCert, serverCert, heartbeatData)
+		err := HeartbeatNode(context.Background(), useTLS12, databaseEndpoint, address, networkCert, serverCert, heartbeatData)
 		if err == nil {
 			heartbeatData.Lock()
 			// Ensure only update nodes that exist in Members already.
 			hbNode, existing := hbState.Members[nodeID]
 			if !existing {
+				heartbeatData.Unlock()
 				return
 			}
 
@@ -197,17 +196,23 @@ func (hbState *APIHeartbeat) Send(ctx context.Context, databaseEndpoint string, 
 			heartbeatData.Unlock()
 			slog.Debug("Successful heartbeat", "remote", address)
 
-			err = hbState.cluster.ResolveOfflineMemberWarning(context.TODO(), nodeID, localName)
-			if err != nil {
-				slog.Warn("Failed to resolve warning", "err", err)
+			warnings, ok := hbState.cluster.(db.ClusterWarningHandler)
+			if ok {
+				err = warnings.ResolveOfflineMemberWarning(context.TODO(), nodeID, localName)
+				if err != nil {
+					slog.Warn("Failed to resolve warning", "err", err)
+				}
 			}
 		} else {
 			slog.Warn("Cluster member isn't responding", "name", name, "err", err)
 
 			if ctx.Err() == nil {
-				err = hbState.cluster.EmitOfflineMemberWarning(context.TODO(), nodeID, localName, err.Error())
-				if err != nil {
-					slog.Warn("Failed to create warning", "err", err)
+				warnings, ok := hbState.cluster.(db.ClusterWarningHandler)
+				if ok {
+					err = warnings.EmitOfflineMemberWarning(context.TODO(), nodeID, localName, err.Error())
+					if err != nil {
+						slog.Warn("Failed to create warning", "err", err)
+					}
 				}
 			}
 		}
@@ -235,13 +240,13 @@ func (hbState *APIHeartbeat) Send(ctx context.Context, databaseEndpoint string, 
 }
 
 // HeartbeatNode performs a single heartbeat request against the node with the given address.
-func HeartbeatNode(taskCtx context.Context, databaseEndpoint string, address string, networkCert *incustls.CertInfo, serverCert *incustls.CertInfo, heartbeatData *APIHeartbeat) error {
+func HeartbeatNode(taskCtx context.Context, useTLS12 bool, databaseEndpoint string, address string, networkCert cowsqltls.CertInfo, serverCert cowsqltls.CertInfo, heartbeatData *APIHeartbeat) error {
 	slog.Debug("Sending heartbeat request", "address", address)
 
 	timeout := 2 * time.Second
 	url := fmt.Sprintf("https://%s%s", address, databaseEndpoint)
 
-	transport, cleanup, err := tls.Transport(networkCert, serverCert)
+	transport, cleanup, err := cowsqltls.Transport(networkCert, serverCert, useTLS12)
 	if err != nil {
 		return err
 	}
@@ -266,7 +271,7 @@ func HeartbeatNode(taskCtx context.Context, databaseEndpoint string, address str
 		return err
 	}
 
-	api.SetCOWSQLVersionHeader(req)
+	cowsqlapi.SetCOWSQLVersionHeader(req)
 
 	// Use 1s later timeout to give HTTP client chance timeout with more useful info.
 	ctx, cancel := context.WithTimeout(taskCtx, timeout+time.Second)
@@ -287,7 +292,7 @@ func HeartbeatNode(taskCtx context.Context, databaseEndpoint string, address str
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Heartbeat request failed with status: %w", incusapi.StatusErrorf(resp.StatusCode, "%s", resp.Status))
+		return fmt.Errorf("Heartbeat request failed with status: %w", api.StatusErrorf(resp.StatusCode, "%s", resp.Status))
 	}
 
 	return nil

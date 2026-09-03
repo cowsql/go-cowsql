@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"time"
 
 	"github.com/cowsql/go-cowsql"
@@ -66,7 +65,7 @@ func Recover(database db.Node) error {
 		return errors.New("This server is not clustered")
 	}
 
-	dir := filepath.Join(database.Dir(), "global")
+	dir := database.GlobalDatabaseDir()
 	server, err := cowsql.New(
 		uint64(info.ID),
 		info.Address,
@@ -149,7 +148,7 @@ func Reconfigure(database db.Node, raftNodes []db.RaftNode, patchFunc func(datab
 		}
 	}
 
-	dir := filepath.Join(database.Dir(), "global")
+	dir := database.GlobalDatabaseDir()
 	// Replace cluster configuration in cowsql.
 	err = cowsql.ReconfigureMembershipExt(dir, nodes)
 	if err != nil {

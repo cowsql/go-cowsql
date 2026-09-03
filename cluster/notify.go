@@ -3,12 +3,12 @@ package cluster
 import (
 	"context"
 
-	"github.com/lxc/incus/v7/shared/tls"
+	"github.com/cowsql/go-cowsql/cluster/tls"
 )
 
 // Notifier is a function that invokes the given function against each node in
 // the cluster excluding the invoking one.
-type Notifier func(hook func(ctx context.Context, address string, networkCert, serverCert *tls.CertInfo) error) []error
+type Notifier func(hook func(ctx context.Context, address string, networkCert, serverCert tls.CertInfo) error) []error
 
 // NotifierPolicy can be used to tweak the behavior of NewNotifier in case of
 // some nodes are down.

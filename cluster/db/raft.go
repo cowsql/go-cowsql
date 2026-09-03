@@ -1,6 +1,8 @@
 package db
 
-import "github.com/cowsql/go-cowsql/client"
+import (
+	"github.com/cowsql/go-cowsql/client"
+)
 
 // RaftNode holds information about a single node in the cowsql raft cluster.
 //
@@ -20,3 +22,8 @@ const (
 	RaftStandBy = client.StandBy
 	RaftSpare   = client.Spare
 )
+
+// DefaultRaftNode represents a fully uninitialized raft node entry with ID: 1 and Address: 1, signifying an uninitialized system.
+func DefaultRaftNode() *RaftNode {
+	return &RaftNode{NodeInfo: client.NodeInfo{ID: 1, Address: "1"}, Name: ""}
+}

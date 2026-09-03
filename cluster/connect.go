@@ -6,13 +6,12 @@ import (
 	"time"
 
 	"github.com/cowsql/go-cowsql/cluster/tls"
-	incustls "github.com/lxc/incus/v7/shared/tls"
 )
 
 // HasConnectivity probes the member with the given address for connectivity.
-func HasConnectivity(networkCert *incustls.CertInfo, serverCert *incustls.CertInfo, address string) bool {
+func HasConnectivity(networkCert tls.CertInfo, serverCert tls.CertInfo, address string, useTLS12 bool) bool {
 	// Get the transport.
-	transport, cleanup, err := tls.Transport(networkCert, serverCert)
+	transport, cleanup, err := tls.Transport(networkCert, serverCert, useTLS12)
 	if err != nil {
 		return false
 	}

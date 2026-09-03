@@ -52,6 +52,13 @@ func Version(v string) Option {
 	}
 }
 
+// RestrictTLS forces using TLS 1.2.
+func RestrictTLS(v bool) Option {
+	return func(options *Options) {
+		options.restrictTLS = v
+	}
+}
+
 // MaxVoters sets the function that determines the maximum number of voter nodes.
 func MaxVoters(f func() int64) Option {
 	return func(options *Options) {
@@ -68,7 +75,7 @@ func MaxStandby(f func() int64) Option {
 
 // PreUpdateCheck returns a function that runs before triggering an update.
 // Returned string must be a path to an executable, or an empty string.
-func PreUpdateCheck(f func() (string, error)) Option {
+func PreUpdateCheck(f func() (func() error, error)) Option {
 	return func(options *Options) {
 		options.preUpdateCheck = f
 	}
@@ -83,9 +90,10 @@ func NewOptions() *Options {
 		defaultOfflineThreshold: 20 * time.Second,
 		maxDBRetries:            250,
 		version:                 "0.0.0",
+		restrictTLS:             false,
 		maxVoters:               func() int64 { return 3 },
 		maxStandby:              func() int64 { return 3 },
-		preUpdateCheck:          func() (string, error) { return "", nil },
+		preUpdateCheck:          func() (func() error, error) { return func() error { return nil }, nil },
 	}
 }
 
@@ -101,11 +109,13 @@ type Options struct {
 
 	version string
 
+	restrictTLS bool
+
 	maxVoters func() int64
 
 	maxStandby func() int64
 
-	preUpdateCheck func() (string, error)
+	preUpdateCheck func() (func() error, error)
 }
 
 func (o *Options) Latency() float64 {
@@ -140,6 +150,10 @@ func (o *Options) MaxStandbyFunc() func() int64 {
 	return o.maxStandby
 }
 
-func (o *Options) PreUpdateCheckFunc() func() (string, error) {
+func (o *Options) PreUpdateCheckFunc() func() (func() error, error) {
 	return o.preUpdateCheck
+}
+
+func (o *Options) RestrictTLS() bool {
+	return o.restrictTLS
 }

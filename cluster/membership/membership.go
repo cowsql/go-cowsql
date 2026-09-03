@@ -2,13 +2,13 @@ package membership
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -20,9 +20,7 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
 	"github.com/cowsql/go-cowsql/cluster/heartbeat"
 	"github.com/cowsql/go-cowsql/cluster/logging"
-
-	incustls "github.com/lxc/incus/v7/shared/tls"
-	"github.com/lxc/incus/v7/shared/util"
+	cowsqltls "github.com/cowsql/go-cowsql/cluster/tls"
 )
 
 // Bootstrap turns a non-clustered server into the first (and leader)
@@ -37,13 +35,8 @@ func Bootstrap(gateway cluster.Gateway, serverName string) error {
 		return errors.New("Server name must not be empty")
 	}
 
-	err := membershipCheckNoLeftoverClusterCert(s.CertificateDir())
-	if err != nil {
-		return err
-	}
-
 	var localClusterAddress string
-	err = transaction.Do(context.TODO(), gateway.Node(), func(ctx context.Context) error {
+	err := transaction.Do(context.TODO(), gateway.Node(), func(ctx context.Context) error {
 		tx := gateway.Node()
 		var err error
 		localClusterAddress, err = tx.GetClusterAddress(ctx)
@@ -88,7 +81,7 @@ func Bootstrap(gateway cluster.Gateway, serverName string) error {
 			return err
 		}
 
-		err = tx.EnsureCertificateIsTrusted(ctx, serverName, serverCertx509)
+		err = tx.SetNodeCertificateByName(ctx, serverName, serverCertx509)
 		if err != nil {
 			return fmt.Errorf("Failed ensuring server certificate is trusted: %w", err)
 		}
@@ -101,7 +94,7 @@ func Bootstrap(gateway cluster.Gateway, serverName string) error {
 
 	// Reload the trusted certificate cache to enable the certificate we just added to the local trust store
 	// to be used when validating endpoint connections. This will allow Cowsql to connect to ourselves.
-	err = s.UpdateCertificateCache(context.TODO())
+	err = s.UpdateAuthorizer(context.TODO())
 	if err != nil {
 		return err
 	}
@@ -116,33 +109,21 @@ func Bootstrap(gateway cluster.Gateway, serverName string) error {
 		return fmt.Errorf("Failed to acquire cluster database lock: %w", err)
 	}
 
-	err = gateway.Shutdown()
+	err = gateway.ShutdownServer()
 	if err != nil {
 		return fmt.Errorf("Failed to shutdown gRPC SQL gateway: %w", err)
 	}
 
-	// The cluster CA certificate is a symlink against the regular server CA certificate.
-	if util.PathExists(filepath.Join(s.CertificateDir(), "server.ca")) {
-		err := os.Symlink("server.ca", filepath.Join(s.CertificateDir(), "cluster.ca"))
-		if err != nil {
-			return fmt.Errorf("Failed to symlink server CA cert to cluster CA cert: %w", err)
-		}
-	}
-
 	// If endpoint listeners are active, apply new cluster certificate.
 
-	if s.IsListening(context.TODO()) == nil {
+	if s.HasListener(context.TODO()) == nil {
 		// Generate a new cluster certificate.
-		clusterCert, err := incustls.KeyPairAndCA(s.CertificateDir(), "cluster", incustls.CertServer, true)
+		clusterCert, err := gateway.State().NewClusterCertificate()
 		if err != nil {
 			return fmt.Errorf("Failed to create cluster cert: %w", err)
 		}
 
 		gateway.NetworkUpdateCert(clusterCert)
-		err = s.UpdateListenerCertificate(context.TODO(), clusterCert)
-		if err != nil {
-			return err
-		}
 	}
 
 	// Re-initialize the gateway. This will create a new raft factory an
@@ -229,7 +210,7 @@ func Accept(gateway cluster.Gateway, serverCert *x509.Certificate, name, address
 		}
 
 		// Add the new node.
-		id, err = tx.CreateNodeWithArch(ctx, name, address, arch)
+		id, err = tx.CreateNode(ctx, name, address, arch)
 		if err != nil {
 			return fmt.Errorf("Failed to insert new node into the database: %w", err)
 		}
@@ -286,7 +267,7 @@ func Accept(gateway cluster.Gateway, serverCert *x509.Certificate, name, address
 
 	err = transaction.Do(context.TODO(), gateway.Cluster(), func(ctx context.Context) error {
 		tx := gateway.Cluster()
-		err = tx.EnsureCertificateIsTrusted(ctx, name, serverCert)
+		err = tx.SetNodeCertificateByName(ctx, name, serverCert)
 		if err != nil {
 			return fmt.Errorf("Failed ensuring server certificate is trusted: %w", err)
 		}
@@ -299,7 +280,7 @@ func Accept(gateway cluster.Gateway, serverCert *x509.Certificate, name, address
 
 	// Reload the trusted certificate cache to enable the certificate we just added to the local trust store
 	// to be used when validating endpoint connections. This will allow Cowsql to connect to ourselves.
-	err = gateway.State().UpdateCertificateCache(context.TODO())
+	err = gateway.State().UpdateAuthorizer(context.TODO())
 	if err != nil {
 		return nil, err
 	}
@@ -317,7 +298,7 @@ func Accept(gateway cluster.Gateway, serverCert *x509.Certificate, name, address
 //
 // The cert parameter must contain the keypair/CA material of the cluster being
 // joined.
-func Join[T any](gateway cluster.Gateway, networkPublicKey, networkPrivateKey string, name string, raftNodes []db.RaftNode) error {
+func Join[T any](gateway cluster.Gateway, networkKeypair tls.Certificate, name string, raftNodes []db.RaftNode) error {
 	s := gateway.State()
 	// Check parameters
 	if name == "" {
@@ -353,10 +334,10 @@ func Join[T any](gateway cluster.Gateway, networkPublicKey, networkPrivateKey st
 	}
 
 	var clusterResources T
-	_, ok := gateway.Cluster().(db.ClusterResourceUpdater[T])
+	_, ok := gateway.Cluster().(db.ClusterExternal[T])
 	if ok {
 		err = transaction.Do(context.TODO(), gateway.Cluster(), func(ctx context.Context) error {
-			tx := gateway.Cluster().(db.ClusterResourceUpdater[T])
+			tx := gateway.Cluster().(db.ClusterExternal[T])
 			var err error
 			clusterResources, err = tx.GetLocalResources(ctx)
 			return err
@@ -376,33 +357,17 @@ func Join[T any](gateway cluster.Gateway, networkPublicKey, networkPrivateKey st
 	// Shutdown the gateway and wipe any raft data. This will trash any
 	// gRPC SQL connection against our in-memory cowsql driver and shutdown
 	// the associated raft instance.
-	err = gateway.Shutdown()
+	err = gateway.ShutdownServer()
 	if err != nil {
 		return fmt.Errorf("Failed to shutdown gRPC SQL gateway: %w", err)
 	}
 
-	err = s.DeleteDatabase(context.TODO())
+	err = os.RemoveAll(gateway.Node().GlobalDatabaseDir())
 	if err != nil {
 		return fmt.Errorf("Failed to remove existing raft data: %w", err)
 	}
 
-	certDir := gateway.State().CertificateDir()
-	err = os.WriteFile(filepath.Join(certDir, "cluster.crt"), []byte(networkPublicKey), 0o644)
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(filepath.Join(certDir, "cluster.key"), []byte(networkPrivateKey), 0o600)
-	if err != nil {
-		return err
-	}
-
-	networkCert, err := incustls.KeyPairAndCA(certDir, "cluster", incustls.CertServer, true)
-	if err != nil {
-		return err
-	}
-
-	err = gateway.State().UpdateListenerCertificate(context.TODO(), networkCert)
+	networkCert, err := gateway.State().SetClusterCertificate(cowsqltls.NewCertInfo(networkKeypair, nil, nil))
 	if err != nil {
 		return err
 	}
@@ -425,7 +390,7 @@ func Join[T any](gateway cluster.Gateway, networkPublicKey, networkPrivateKey st
 	}
 
 	if info == nil {
-		panic("Joining member not found")
+		return errors.New("Joining member info not found")
 	}
 
 	slog.Info("Joining cowsql raft cluster", "id", info.ID, "local", info.Address, "role", info.Role)
@@ -482,12 +447,12 @@ func Join[T any](gateway cluster.Gateway, networkPublicKey, networkPrivateKey st
 	slog.Info("Migrate local data to cluster database")
 	err = transaction.DoExclusive(context.TODO(), gateway.Cluster(), func(ctx context.Context) error {
 		tx := gateway.Cluster()
-		node, err := tx.GetPendingNodeByAddress(ctx, localClusterAddress)
+		node, err := tx.GetNodeByAddress(ctx, localClusterAddress, true)
 		if err != nil {
 			return fmt.Errorf("Failed to get ID of joining node from address %q: %w", localClusterAddress, err)
 		}
 
-		rtx, ok := tx.(db.ClusterResourceUpdater[T])
+		rtx, ok := tx.(db.ClusterExternal[T])
 		if ok {
 			err = rtx.UpdateClusterResources(ctx, node, clusterResources)
 			if err != nil {
@@ -516,7 +481,7 @@ func Join[T any](gateway cluster.Gateway, networkPublicKey, networkPrivateKey st
 	}
 
 	// Generate partial heartbeat request containing just a raft node list.
-	if s.IsListening(context.TODO()) == nil {
+	if s.HasListener(context.TODO()) == nil {
 		NotifyHeartbeat(gateway)
 	}
 
@@ -620,7 +585,7 @@ func NotifyHeartbeat(gateway cluster.Gateway) {
 			maps.Copy(hbMembers, hbState.Members)
 		}
 
-		s.UpdateEventListeners(hbMembers)
+		s.OnHeartbeatNotification(hbMembers)
 	})
 
 	// Notify all other members of the change in membership.
@@ -632,7 +597,7 @@ func NotifyHeartbeat(gateway cluster.Gateway) {
 
 		wg.Add(1)
 		go func(address string) {
-			_ = heartbeat.HeartbeatNode(context.Background(), gateway.UserConfig().DatabaseEndpoint(), address, gateway.NetworkCert(), gateway.ServerCert(), hbState)
+			_ = heartbeat.HeartbeatNode(context.Background(), gateway.UserConfig().RestrictTLS(), gateway.UserConfig().DatabaseEndpoint(), address, gateway.NetworkCert(), gateway.ServerCert(), hbState)
 			wg.Done()
 		}(member.Address)
 	}
@@ -651,7 +616,7 @@ func NotifyHeartbeat(gateway cluster.Gateway) {
 // Returns:
 // - the address of the node that was promoted or demoted (if any).
 // - and the full list of raft nodes after rebalancing.
-func Rebalance(gateway cluster.Gateway, unavailableMembers []string, exceptRoles []string) (string, []db.RaftNode, error) {
+func Rebalance(gateway cluster.Gateway, unavailableMembers []string, alwaysDemoteRoles []string) (string, []db.RaftNode, error) {
 	// If we're a standalone node, do nothing.
 	if gateway.Standalone() {
 		return "", nil, nil
@@ -688,15 +653,17 @@ func Rebalance(gateway cluster.Gateway, unavailableMembers []string, exceptRoles
 		}
 
 		// Check if the node has the 'database-client' role.
-		var skipRole bool
-		for _, r := range exceptRoles {
-			if !slices.Contains(member.Roles, r) {
-				skipRole = true
+		var hasAnyDemoteRole bool
+
+		for _, r := range alwaysDemoteRoles {
+			if slices.Contains(member.Roles, r) {
+				hasAnyDemoteRole = true
+
 				break
 			}
 		}
 
-		if skipRole || len(exceptRoles) == 0 {
+		if !hasAnyDemoteRole || len(alwaysDemoteRoles) == 0 {
 			continue
 		}
 
@@ -732,15 +699,17 @@ func Rebalance(gateway cluster.Gateway, unavailableMembers []string, exceptRoles
 		}
 
 		// Exclude nodes with the "database-client" role from candidates.
-		var skipRole bool
-		for _, r := range exceptRoles {
+		var hasAnyDemoteRole bool
+
+		for _, r := range alwaysDemoteRoles {
 			if slices.Contains(member.Roles, r) {
-				skipRole = true
+				hasAnyDemoteRole = true
+
 				break
 			}
 		}
 
-		if skipRole {
+		if hasAnyDemoteRole {
 			continue
 		}
 
@@ -760,21 +729,20 @@ func Rebalance(gateway cluster.Gateway, unavailableMembers []string, exceptRoles
 // Assign a new role to the local cowsql node.
 func Assign(gateway cluster.Gateway, nodes []db.RaftNode) error {
 	s := gateway.State()
-	// Figure out our own address.
-	var address string
+
+	address := s.ClusterAddress()
+	// Ensure we actually have an address.
+	if address == "" {
+		return errors.New("Cluster member is not exposed on the network")
+	}
+
 	err := transaction.Do(context.TODO(), gateway.Cluster(), func(ctx context.Context) error {
 		tx := gateway.Cluster()
-		var err error
-		address, err = tx.GetLocalNodeAddress(ctx)
+		_, err := tx.GetNodeByAddress(ctx, address, false)
 		return err
 	})
 	if err != nil {
 		return fmt.Errorf("Failed to fetch the address of this cluster member: %w", err)
-	}
-
-	// Ensure we actually have an address.
-	if address == "" {
-		return errors.New("Cluster member is not exposed on the network")
 	}
 
 	// Figure out our node identity.
@@ -809,49 +777,11 @@ func Assign(gateway cluster.Gateway, nodes []db.RaftNode) error {
 
 	var transactor func(context.Context, transaction.Transactor, func(ctx context.Context) error) error
 
-	// If we are already running a cowsql node, it means we have cleanly
-	// joined the cluster before, using the roles support API. In that case
-	// there's no need to restart the gateway and we can just change our
-	// cowsql role.
-	if gateway.IsCowsqlNode() {
-		transactor = transaction.Do
-		goto assign
+	if !gateway.Initialized() {
+		return errors.New("Gateway has not been initialized")
 	}
 
-	// If we get here it means that we are an upgraded node from cluster
-	// without roles support, or we didn't cleanly join the cluster. Either
-	// way, we don't have a cowsql node running, so we need to restart the
-	// gateway.
-
-	// Lock regular access to the cluster database since we don't want any
-	// other database code to run while we're reconfiguring raft.
-	err = gateway.Cluster().EnterExclusive()
-	if err != nil {
-		return fmt.Errorf("Failed to acquire cluster database lock: %w", err)
-	}
-
-	transactor = func(ctx context.Context, t transaction.Transactor, f func(ctx context.Context) error) error {
-		return transaction.DoExclusive(ctx, t, func(ctx context.Context) error {
-			return f(ctx)
-		})
-	}
-
-	// Wipe all existing raft data, for good measure (perhaps they were
-	// somehow leftover).
-	err = s.DeleteDatabase(context.TODO())
-	if err != nil {
-		return fmt.Errorf("Failed to remove existing raft data: %w", err)
-	}
-
-	// Re-initialize the gateway. This will create a new raft factory an
-	// cowsql driver instance, which will be exposed over gRPC by the
-	// gateway handlers.
-	err = gateway.Initialize(false)
-	if err != nil {
-		return fmt.Errorf("Failed to re-initialize gRPC SQL gateway: %w", err)
-	}
-
-assign:
+	transactor = transaction.Do
 	slog.Info("Changing local database role", "role", info.Role)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -951,7 +881,7 @@ assign:
 	}
 
 	// Generate partial heartbeat request containing just a raft node list.
-	if s.IsListening(context.TODO()) == nil {
+	if s.HasListener(context.TODO()) == nil {
 		NotifyHeartbeat(gateway)
 	}
 
@@ -969,7 +899,7 @@ assign:
 // Upon success, return the address of the leaving node.
 //
 // This function must be called by the cluster leader.
-func Leave(gateway cluster.Gateway, name string, force bool, pending bool) (string, error) {
+func Leave[T any](gateway cluster.Gateway, name string, force bool, pending bool) (string, error) {
 	slog.Debug("Make node leave the cluster", "name", name)
 
 	// Check if the node can be deleted and track its address.
@@ -980,12 +910,12 @@ func Leave(gateway cluster.Gateway, name string, force bool, pending bool) (stri
 		var node db.NodeInfo
 		var err error
 		if pending {
-			node, err = tx.GetPendingNodeByName(ctx, name)
+			node, err = tx.GetNodeByName(ctx, name, true)
 			if err != nil {
 				return fmt.Errorf("Failed to get member %q: %w", name, err)
 			}
 		} else {
-			node, err = tx.GetNodeByName(ctx, name)
+			node, err = tx.GetNodeByName(ctx, name, false)
 			if err != nil {
 				return fmt.Errorf("Failed to get member %q: %w", name, err)
 			}
@@ -993,7 +923,7 @@ func Leave(gateway cluster.Gateway, name string, force bool, pending bool) (stri
 
 		// Check that the node is eligeable for leaving.
 		if !force {
-			err := membershipCheckClusterStateForLeave(ctx, tx, node)
+			err := membershipCheckClusterStateForLeave[T](ctx, tx, node)
 			if err != nil {
 				return err
 			}
@@ -1108,7 +1038,7 @@ func newRolesChanges(gateway cluster.Gateway, nodes []db.RaftNode, unavailableMe
 	clusterState := map[client.NodeInfo]*client.NodeMetadata{}
 
 	for _, raftNode := range nodes {
-		if !slices.Contains(unavailableMembers, raftNode.Address) && cluster.HasConnectivity(gateway.NetworkCert(), gateway.ServerCert(), raftNode.Address) {
+		if !slices.Contains(unavailableMembers, raftNode.Address) && cluster.HasConnectivity(gateway.NetworkCert(), gateway.ServerCert(), raftNode.Address, gateway.UserConfig().RestrictTLS()) {
 			clusterState[raftNode.NodeInfo] = &client.NodeMetadata{
 				FailureDomain: domains[raftNode.Address],
 			}
@@ -1129,7 +1059,7 @@ func newRolesChanges(gateway cluster.Gateway, nodes []db.RaftNode, unavailableMe
 }
 
 // Purge removes a node entirely from the cluster database.
-func Purge(gateway cluster.Gateway, name string, pending bool) error {
+func Purge[T any](gateway cluster.Gateway, name string, pending bool) error {
 	slog.Debug("Remove node from the database", "name", name)
 
 	return transaction.Do(context.TODO(), gateway.Cluster(), func(ctx context.Context) error {
@@ -1138,30 +1068,28 @@ func Purge(gateway cluster.Gateway, name string, pending bool) error {
 		var node db.NodeInfo
 		var err error
 		if pending {
-			node, err = tx.GetPendingNodeByName(ctx, name)
+			node, err = tx.GetNodeByName(ctx, name, true)
 			if err != nil {
 				return fmt.Errorf("Failed to get member %q: %w", name, err)
 			}
 		} else {
-			node, err = tx.GetNodeByName(ctx, name)
+			node, err = tx.GetNodeByName(ctx, name, false)
 			if err != nil {
 				return fmt.Errorf("Failed to get member %q: %w", name, err)
 			}
 		}
 
-		err = tx.ClearNode(ctx, node.ID)
-		if err != nil {
-			return fmt.Errorf("Failed to clear member %q: %w", name, err)
+		external, ok := tx.(db.ClusterExternal[T])
+		if ok {
+			err = external.ClearNode(ctx, node.ID)
+			if err != nil {
+				return fmt.Errorf("Failed to clear member %q: %w", name, err)
+			}
 		}
 
-		err = tx.RemoveNode(ctx, node.ID)
+		err = tx.RemoveNode(ctx, node.Name)
 		if err != nil {
 			return fmt.Errorf("Failed to remove member %q: %w", name, err)
-		}
-
-		err = tx.DeleteCertificatesByMemberName(ctx, name)
-		if err != nil {
-			return fmt.Errorf("Failed to remove member %q certificate from trust store: %w", name, err)
 		}
 
 		return nil
@@ -1189,7 +1117,7 @@ func Enabled(nodeDB db.Node) (bool, error) {
 	var enabled bool
 	err := transaction.Do(context.TODO(), nodeDB, func(ctx context.Context) error {
 		tx := nodeDB
-		addresses, err := tx.GetRaftNodeAddresses(ctx)
+		addresses, err := tx.GetRaftNodes(ctx)
 		if err != nil {
 			return err
 		}
@@ -1215,11 +1143,11 @@ func membershipCheckNodeStateForBootstrapOrJoin(ctx context.Context, tx db.Node,
 	// Ensure that we're not in an inconsistent situation, where no cluster address is set, but still there
 	// are entries in the raft_nodes table.
 	if !hasClusterAddress && hasRaftNodes {
-		return errors.New("Inconsistent state: found leftover entries in raft_nodes")
+		return errors.New("Inconsistent state: found leftover entries in member cache")
 	}
 
 	if !hasClusterAddress {
-		return errors.New("No cluster.https_address config is set on this member")
+		return errors.New("No cluster address config is set on this member")
 	}
 
 	if hasRaftNodes {
@@ -1238,7 +1166,7 @@ func membershipCheckClusterStateForBootstrapOrJoin(ctx context.Context, tx db.Cl
 	}
 
 	if len(members) != 1 {
-		return errors.New("Inconsistent state: Found leftover entries in cluster members")
+		return errors.New("Inconsistent state: Found leftover cluster members")
 	}
 
 	return nil
@@ -1277,15 +1205,18 @@ func membershipCheckClusterStateForAccept(ctx context.Context, version string, t
 }
 
 // Check that cluster-related preconditions are met for leaving a cluster.
-func membershipCheckClusterStateForLeave(ctx context.Context, tx db.Cluster, node db.NodeInfo) error {
+func membershipCheckClusterStateForLeave[T any](ctx context.Context, tx db.Cluster, node db.NodeInfo) error {
 	// Check that it has no containers or images.
-	message, err := tx.NodeIsEmpty(ctx, node.ID)
-	if err != nil {
-		return err
-	}
+	external, ok := tx.(db.ClusterExternal[T])
+	if ok {
+		message, err := external.NodeIsEmpty(ctx, node.ID)
+		if err != nil {
+			return err
+		}
 
-	if message != "" {
-		return errors.New(message)
+		if message != "" {
+			return errors.New(message)
+		}
 	}
 
 	// Check that it's not the last member.
@@ -1300,18 +1231,3 @@ func membershipCheckClusterStateForLeave(ctx context.Context, tx db.Cluster, nod
 
 	return nil
 }
-
-// Check that there is no left-over cluster certificate in the var dir of this server.
-func membershipCheckNoLeftoverClusterCert(dir string) error {
-	// Ensure that there's no leftover cluster certificate.
-	for _, basename := range []string{"cluster.crt", "cluster.key", "cluster.ca"} {
-		if util.PathExists(filepath.Join(dir, basename)) {
-			return errors.New("Inconsistent state: found leftover cluster certificate")
-		}
-	}
-
-	return nil
-}
-
-// SchemaVersion holds the version of the cluster database schema.
-// var SchemaVersion = cluster.SchemaVersion

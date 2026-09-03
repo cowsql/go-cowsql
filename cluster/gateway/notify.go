@@ -1,4 +1,4 @@
-//go:build !nosqlite3
+//go:build !nosqlite3 && !darwin
 
 package gateway
 
@@ -9,16 +9,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lxc/incus/v7/shared/tls"
-
 	"github.com/cowsql/go-cowsql/cluster"
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
+	"github.com/cowsql/go-cowsql/cluster/tls"
 )
 
 // NewNotifier builds a Notifier that can be used to notify other peers using
 // the given policy.
-func (g *gateway) NewNotifier(ctx context.Context, networkCert *tls.CertInfo, serverCert *tls.CertInfo, policy cluster.NotifierPolicy) (cluster.Notifier, error) {
+func (g *gateway) NewNotifier(ctx context.Context, networkCert tls.CertInfo, serverCert tls.CertInfo, policy cluster.NotifierPolicy) (cluster.Notifier, error) {
 	localClusterAddress, err := g.Node().GetClusterAddress(ctx)
 	if err != nil {
 		return nil, err
@@ -26,7 +25,7 @@ func (g *gateway) NewNotifier(ctx context.Context, networkCert *tls.CertInfo, se
 
 	// Fast-track the case where we're not clustered at all.
 	if localClusterAddress == "" || g.Cluster() == nil {
-		return func(hook func(ctx context.Context, address string, networkCert *tls.CertInfo, serverCert *tls.CertInfo) error) []error {
+		return func(hook func(ctx context.Context, address string, networkCert tls.CertInfo, serverCert tls.CertInfo) error) []error {
 			return nil
 		}, nil
 	}
@@ -64,7 +63,7 @@ func (g *gateway) NewNotifier(ctx context.Context, networkCert *tls.CertInfo, se
 			// and the node is actually up.
 			switch policy {
 			case cluster.NotifyAll:
-				if !cluster.HasConnectivity(networkCert, serverCert, member.Address) {
+				if !cluster.HasConnectivity(networkCert, serverCert, member.Address, g.UserConfig().RestrictTLS()) {
 					return nil, fmt.Errorf("peer node %s is down", member.Address)
 				}
 			case cluster.NotifyAlive:
@@ -76,7 +75,7 @@ func (g *gateway) NewNotifier(ctx context.Context, networkCert *tls.CertInfo, se
 		peers = append(peers, member.Address)
 	}
 
-	notifier := func(hook func(ctx context.Context, address string, networkCert, serverCert *tls.CertInfo) error) []error {
+	notifier := func(hook func(ctx context.Context, address string, networkCert, serverCert tls.CertInfo) error) []error {
 		errs := make([]error, len(peers))
 		wg := sync.WaitGroup{}
 		wg.Add(len(peers))

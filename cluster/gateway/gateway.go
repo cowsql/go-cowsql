@@ -1,4 +1,4 @@
-//go:build !nosqlite3
+//go:build !nosqlite3 && !darwin
 
 package gateway
 
@@ -11,14 +11,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"sync"
 	"time"
-
-	"github.com/lxc/incus/v7/shared/revert"
-	incustcp "github.com/lxc/incus/v7/shared/tcp"
-	incustls "github.com/lxc/incus/v7/shared/tls"
-	incusutil "github.com/lxc/incus/v7/shared/util"
 
 	"github.com/cowsql/go-cowsql"
 	"github.com/cowsql/go-cowsql/client"
@@ -26,7 +20,9 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
 	"github.com/cowsql/go-cowsql/cluster/heartbeat"
-	"github.com/cowsql/go-cowsql/cluster/internal/response"
+	"github.com/cowsql/go-cowsql/cluster/internal/util/file"
+	"github.com/cowsql/go-cowsql/cluster/internal/util/revert"
+	"github.com/cowsql/go-cowsql/cluster/internal/util/tcp"
 	"github.com/cowsql/go-cowsql/cluster/membership"
 	"github.com/cowsql/go-cowsql/cluster/options"
 	"github.com/cowsql/go-cowsql/cluster/state"
@@ -37,8 +33,8 @@ type gateway struct {
 	options *options.Options
 
 	db          db.Node
-	networkCert *incustls.CertInfo
-	serverCert  func() *incustls.CertInfo
+	networkCert tls.CertInfo
+	serverCert  func() tls.CertInfo
 
 	// Keep track of skews.
 	timeSkew bool
@@ -109,7 +105,7 @@ func (g *gateway) init(bootstrap bool) error {
 		return fmt.Errorf("Failed to create raft factory: %w", err)
 	}
 
-	if incusutil.PathExists(g.db.LogPath()) {
+	if file.PathExists(g.db.LogPath()) {
 		return errors.New("Unsupported upgrade path, please reinstall")
 	}
 
@@ -133,7 +129,7 @@ func (g *gateway) init(bootstrap bool) error {
 
 		if info.Address == "1" {
 			if info.ID != 1 {
-				panic("unexpected server ID")
+				return errors.New("Invalid database state, multiple non-initialized member records found")
 			}
 
 			g.memoryDial = cowsqlMemoryDial(g.bindAddress)
@@ -151,7 +147,7 @@ func (g *gateway) init(bootstrap bool) error {
 		server, err := cowsql.New(
 			info.ID,
 			info.Address,
-			filepath.Join(g.db.Dir(), "global"),
+			g.db.GlobalDatabaseDir(),
 			options...,
 		)
 		if err != nil {
@@ -216,16 +212,18 @@ func (g *gateway) nodeAddress(ctx context.Context, raftAddress string) (string, 
 	var address string
 	err := transaction.Do(ctx, g.Node(), func(ctx context.Context) error {
 		var err error
-		address, err = g.db.GetRaftNodeAddress(ctx, 1)
+		raftNode, found, err := g.db.GetRaftNode(ctx, 1)
 		if err != nil {
-			if !response.IsNotFoundError(err) {
-				return fmt.Errorf("Failed to fetch raft server address: %w", err)
-			}
+			return fmt.Errorf("Failed to fetch raft server address: %w", err)
+		}
 
+		if !found {
 			// Use the initial address as fallback. This is an edge
 			// case that happens when listing members on a
 			// non-clustered node.
 			address = raftAddress
+		} else {
+			address = raftNode.Address
 		}
 
 		return nil
@@ -274,7 +272,7 @@ func (g *gateway) raftDial() client.DialFunc {
 }
 
 func cowsqlNetworkDial(ctx context.Context, name string, addr string, g *gateway) (net.Conn, error) {
-	transport, cleanup, err := tls.Transport(g.networkCert, g.serverCert())
+	transport, cleanup, err := tls.Transport(g.networkCert, g.serverCert(), g.UserConfig().RestrictTLS())
 	if err != nil {
 		return nil, err
 	}
@@ -315,11 +313,11 @@ func cowsqlNetworkDial(ctx context.Context, name string, addr string, g *gateway
 	l := slog.With("name", name, "local", conn.LocalAddr(), "remote", conn.RemoteAddr())
 	l.Debug("Cowsql connected outbound")
 
-	remoteTCP, err := incustcp.ExtractConn(conn)
+	remoteTCP, err := tcp.ExtractConn(conn)
 	if err != nil {
 		l.Warn("Failed extracting TCP connection from remote connection", "err", err)
 	} else {
-		err := incustcp.SetTimeouts(remoteTCP, time.Second*30)
+		err := tcp.SetTimeouts(remoteTCP, time.Second*30)
 		if err != nil {
 			l.Warn("Failed setting TCP timeouts on remote connection", "err", err)
 		}
@@ -373,11 +371,14 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 			slog.Warn("Time skew detected between leader and local", "leaderTime", hbData.Time, "localTime", now)
 
 			if g.Cluster() != nil {
-				err := transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
-					return g.Cluster().EmitTimeSkewWarning(ctx, g.info.Name, fmt.Sprintf("leaderTime: %s, localTime: %s", hbData.Time, now))
-				})
-				if err != nil {
-					slog.Warn("Failed to create cluster time skew warning", "err", err)
+				warnings, ok := g.Cluster().(db.ClusterWarningHandler)
+				if ok {
+					err := transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
+						return warnings.EmitTimeSkewWarning(ctx, g.info.Name, fmt.Sprintf("leaderTime: %s, localTime: %s", hbData.Time, now))
+					})
+					if err != nil {
+						slog.Warn("Failed to create cluster time skew warning", "err", err)
+					}
 				}
 			}
 		}
@@ -388,11 +389,14 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 			slog.Warn("Time skew resolved")
 
 			if g.Cluster() != nil {
-				err := transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
-					return g.Cluster().ResolveTimeSkewWarning(ctx, g.info.Name)
-				})
-				if err != nil {
-					slog.Warn("Failed to resolve cluster time skew warning", "err", err)
+				warnings, ok := g.Cluster().(db.ClusterWarningHandler)
+				if ok {
+					err := transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
+						return warnings.ResolveTimeSkewWarning(ctx, g.info.Name)
+					})
+					if err != nil {
+						slog.Warn("Failed to resolve cluster time skew warning", "err", err)
+					}
 				}
 			}
 

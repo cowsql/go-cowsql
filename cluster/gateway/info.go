@@ -4,11 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"path/filepath"
 
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
-	incusutil "github.com/lxc/incus/v7/shared/util"
+	"github.com/cowsql/go-cowsql/cluster/internal/util/file"
 )
 
 // Load information about the cowsql node associated with this cluster member.
@@ -38,8 +37,8 @@ func loadInfo(database db.Node) (*db.RaftNode, error) {
 	slog.Info("Starting database node", "id", info.ID, "local", info.Address, "role", info.Role)
 
 	// Data directory
-	dir := filepath.Join(database.Dir(), "global")
-	if !incusutil.PathExists(dir) {
+	dir := database.GlobalDatabaseDir()
+	if !file.PathExists(dir) {
 		err := os.Mkdir(dir, 0o750)
 		if err != nil {
 			return nil, err

@@ -11,9 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cowsql/go-cowsql/driver"
-	"github.com/lxc/incus/v7/shared/api"
 	"github.com/mattn/go-sqlite3"
+
+	"github.com/cowsql/go-cowsql/cluster/internal/util/api"
+	"github.com/cowsql/go-cowsql/driver"
 )
 
 // Retry wraps a function that interacts with the database, and retries it in
@@ -52,7 +53,7 @@ func Retry(ctx context.Context, maxRetries int, f func(ctx context.Context) erro
 			break
 		}
 
-		if i == maxRetries {
+		if i == maxRetries-1 {
 			slog.Warn("Database error, giving up", "attempt", i, "err", err)
 			break
 		}

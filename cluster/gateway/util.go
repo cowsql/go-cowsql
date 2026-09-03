@@ -7,6 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"runtime"
+	"time"
 )
 
 // writeJSON encodes the body as JSON and sends it back to the client
@@ -46,4 +48,26 @@ func debugJSON(title string, r *bytes.Buffer, l *slog.Logger) {
 	// Print the JSON without the last "\n"
 	str := pretty.String()
 	l.Debug(fmt.Sprintf("%s\n\t%s", title, str[0:len(str)-1]))
+}
+
+// closeOrLog executes the closer with a timeout as queries
+// stuck on an unreachable cluster can block it indefinitely.
+func closeOrLog(msg string, timeout time.Duration, closer func() error) {
+	done := make(chan struct{})
+	go func() {
+		err := closer()
+		if err != nil {
+			slog.Debug("Failed to run closer", slog.String("message", msg), slog.Any("error", err))
+		}
+
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		buf := make([]byte, 1024*1024)
+		n := runtime.Stack(buf, true)
+		slog.Warn("Timed out running closer", slog.String("timeout", timeout.String()), slog.String("message", msg), slog.String("goroutines", string(buf[:n])))
+	}
 }

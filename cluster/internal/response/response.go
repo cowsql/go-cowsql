@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lxc/incus/v7/shared/api"
+	"github.com/cowsql/go-cowsql/cluster/internal/util/api"
 )
 
 var httpResponseErrors = map[int][]error{
