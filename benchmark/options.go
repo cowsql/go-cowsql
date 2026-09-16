@@ -13,6 +13,7 @@ const (
 )
 
 type (
+	// Option represents a benchmark option.
 	Option  func(*options)
 	options struct {
 		cluster        []string
@@ -27,8 +28,6 @@ type (
 
 func parseWorkload(workload string) workload {
 	switch strings.ToLower(workload) {
-	case "kvwrite":
-		return kvWrite
 	case "kvreadwrite":
 		return kvReadWrite
 	default:
@@ -80,7 +79,7 @@ func WithCluster(cluster []string) Option {
 }
 
 // WithClusterTimeout sets the timeout when waiting for the whole cluster to be
-// online
+// online.
 func WithClusterTimeout(cTo int) Option {
 	return func(options *options) {
 		options.clusterTimeout = time.Duration(cTo) * time.Second

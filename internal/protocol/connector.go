@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"sort"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/Rican7/retry"
 	"github.com/Rican7/retry/backoff"
 	"github.com/Rican7/retry/strategy"
+
 	"github.com/cowsql/go-cowsql/logging"
 )
 
@@ -85,6 +87,7 @@ func (c *Connector) Connect(ctx context.Context) (*Protocol, error) {
 		}
 
 		var err error
+
 		protocol, err = c.connectAttemptAll(ctx, log)
 		if err != nil {
 			return err
@@ -133,29 +136,36 @@ func (c *Connector) connectAttemptAll(ctx context.Context, log logging.Func) (*P
 		}
 
 		ctx, cancel := context.WithTimeout(ctx, c.config.AttemptTimeout)
-		defer cancel()
+		defer cancel() //nolint:revive
 
 		version := VersionOne
+
 		protocol, leader, err := c.connectAttemptOne(ctx, server.Address, version)
-		if err == errBadProtocol {
+		if errors.Is(err, errBadProtocol) {
 			log(logging.Warn, "unsupported protocol %d, attempt with legacy", version)
 			version = VersionLegacy
 			protocol, leader, err = c.connectAttemptOne(ctx, server.Address, version)
 		}
+
 		if err != nil {
 			// This server is unavailable, try with the next target.
 			log(logging.Warn, err.Error())
+
 			continue
 		}
+
 		if protocol != nil {
 			// We found the leader
 			log(logging.Debug, "connected")
+
 			return protocol, nil
 		}
+
 		if leader == "" {
 			// This server does not know who the current leader is,
 			// try with the next target.
 			log(logging.Warn, "no known leader")
+
 			continue
 		}
 
@@ -165,29 +175,34 @@ func (c *Connector) connectAttemptAll(ctx context.Context, log logging.Func) (*P
 		log(logging.Debug, "connect to reported leader %s", leader)
 
 		ctx, cancel = context.WithTimeout(ctx, c.config.AttemptTimeout)
-		defer cancel()
+		defer cancel() //nolint:revive
 
-		protocol, leader, err = c.connectAttemptOne(ctx, leader, version)
+		protocol, _, err = c.connectAttemptOne(ctx, leader, version)
 		if err != nil {
 			// The leader reported by the previous server is
 			// unavailable, try with the next target.
 			log(logging.Warn, "reported leader unavailable err=%v", err)
+
 			continue
 		}
+
 		if protocol == nil {
 			// The leader reported by the target server does not consider itself
 			// the leader, try with the next target.
 			log(logging.Warn, "reported leader server is not the leader")
+
 			continue
 		}
+
 		log(logging.Debug, "connected")
+
 		return protocol, nil
 	}
 
 	return nil, ErrNoAvailableLeader
 }
 
-// Perform the initial handshake using the given protocol version.
+// Handshake performs the initial handshake using the given protocol version.
 func Handshake(ctx context.Context, conn net.Conn, version uint64) (*Protocol, error) {
 	// Latest protocol version.
 	protocol := make([]byte, 8)
@@ -195,8 +210,16 @@ func Handshake(ctx context.Context, conn net.Conn, version uint64) (*Protocol, e
 
 	// Honor the ctx deadline, if present.
 	if deadline, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(deadline)
-		defer conn.SetDeadline(time.Time{})
+		err := conn.SetDeadline(deadline)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set deadline: %w", err)
+		}
+		defer func() {
+			err := conn.SetDeadline(time.Time{})
+			if err != nil {
+				slog.Error("Failed to set deadline", "error", err)
+			}
+		}()
 	}
 
 	// Perform the protocol handshake.
@@ -204,6 +227,7 @@ func Handshake(ctx context.Context, conn net.Conn, version uint64) (*Protocol, e
 	if err != nil {
 		return nil, fmt.Errorf("write handshake: %w", err)
 	}
+
 	if n != 8 {
 		return nil, fmt.Errorf("short handshake write: %w", err)
 	}
@@ -218,7 +242,7 @@ func Handshake(ctx context.Context, conn net.Conn, version uint64) (*Protocol, e
 // - Any failure is hit:                     -> nil, "", err
 // - Target not leader and no leader known:  -> nil, "", nil
 // - Target not leader and leader known:     -> nil, leader, nil
-// - Target is the leader:                   -> server, "", nil
+// - Target is the leader:                   -> server, "", nil.
 func (c *Connector) connectAttemptOne(ctx context.Context, address string, version uint64) (*Protocol, string, error) {
 	dialCtx, cancel := context.WithTimeout(ctx, c.config.DialTimeout)
 	defer cancel()
@@ -231,20 +255,30 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string, versi
 
 	protocol, err := Handshake(ctx, conn, version)
 	if err != nil {
-		conn.Close()
+		closeErr := conn.Close()
+		if closeErr != nil {
+			return nil, "", fmt.Errorf("failed to close connection: %w", err)
+		}
+
 		return nil, "", err
 	}
 
 	// Send the initial Leader request.
 	request := Message{}
 	request.Init(16)
+
 	response := Message{}
 	response.Init(512)
 
 	EncodeLeader(&request)
 
-	if err := protocol.Call(ctx, &request, &response); err != nil {
-		protocol.Close()
+	err = protocol.Call(ctx, &request, &response)
+	if err != nil {
+		closeErr := protocol.Close()
+		if closeErr != nil {
+			return nil, "", fmt.Errorf("failed to close connection: %w", err)
+		}
+
 		var neterr *net.OpError
 		// Best-effort detection of a pre-1.0 cowsql node: when sent
 		// version 1 it should close the connection immediately.
@@ -257,14 +291,19 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string, versi
 
 	_, leader, err := DecodeNodeCompat(protocol, &response)
 	if err != nil {
-		protocol.Close()
+		closeErr := protocol.Close()
+		if closeErr != nil {
+			return nil, "", fmt.Errorf("failed to close connection: %w", err)
+		}
+
 		return nil, "", err
 	}
 
 	switch leader {
 	case "":
 		// Currently this server does not know about any leader.
-		protocol.Close()
+		_ = protocol.Close()
+
 		return nil, "", nil
 	case address:
 		// This server is the leader, register ourselves and return.
@@ -273,14 +312,23 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string, versi
 
 		EncodeClient(&request, c.id)
 
-		if err := protocol.Call(ctx, &request, &response); err != nil {
-			protocol.Close()
+		err := protocol.Call(ctx, &request, &response)
+		if err != nil {
+			closeErr := protocol.Close()
+			if closeErr != nil {
+				return nil, "", fmt.Errorf("failed to close connection: %w", err)
+			}
+
 			return nil, "", err
 		}
 
-		_, err := DecodeWelcome(&response)
+		_, err = DecodeWelcome(&response)
 		if err != nil {
-			protocol.Close()
+			closeErr := protocol.Close()
+			if closeErr != nil {
+				return nil, "", fmt.Errorf("failed to close connection: %w", err)
+			}
+
 			return nil, "", err
 		}
 
@@ -291,15 +339,16 @@ func (c *Connector) connectAttemptOne(ctx context.Context, address string, versi
 		return protocol, "", nil
 	default:
 		// This server claims to know who the current leader is.
-		protocol.Close()
+		_ = protocol.Close()
+
 		return nil, leader, nil
 	}
 }
 
 // Return a retry strategy with exponential backoff, capped at the given amount
 // of time and possibly with a maximum number of retries.
-func makeRetryStrategies(factor, cap time.Duration, limit uint) []strategy.Strategy {
-	limit += 1 // Fix for change in behavior: https://github.com/Rican7/retry/pull/12
+func makeRetryStrategies(factor, dur time.Duration, limit uint) []strategy.Strategy {
+	limit++ // Fix for change in behavior: https://github.com/Rican7/retry/pull/12
 	backoff := backoff.BinaryExponential(factor)
 
 	strategies := []strategy.Strategy{}
@@ -313,9 +362,10 @@ func makeRetryStrategies(factor, cap time.Duration, limit uint) []strategy.Strat
 			if attempt > 0 {
 				duration := backoff(attempt)
 				// Duration might be negative in case of integer overflow.
-				if duration > cap || duration <= 0 {
-					duration = cap
+				if duration > dur || duration <= 0 {
+					duration = dur
 				}
+
 				time.Sleep(duration)
 			}
 
@@ -326,4 +376,4 @@ func makeRetryStrategies(factor, cap time.Duration, limit uint) []strategy.Strat
 	return strategies
 }
 
-var errBadProtocol = fmt.Errorf("bad protocol")
+var errBadProtocol = errors.New("bad protocol")

@@ -9,7 +9,7 @@ import (
 )
 
 // DefaultDialFunc is the default dial function, which can handle plain TCP and
-// Unix socket endpoints. You can customize it with WithDialFunc()
+// Unix socket endpoints. You can customize it with WithDialFunc().
 func DefaultDialFunc(ctx context.Context, address string) (net.Conn, error) {
 	return protocol.Dial(ctx, address)
 }
@@ -26,12 +26,15 @@ func DialFuncWithTLS(dial DialFunc, config *tls.Config) DialFunc {
 			if err != nil {
 				return nil, err
 			}
+
 			clonedConfig.ServerName = remoteIP
 		}
+
 		conn, err := dial(ctx, addr)
 		if err != nil {
 			return nil, err
 		}
+
 		return tls.Client(conn, clonedConfig), nil
 	}
 }

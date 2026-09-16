@@ -20,6 +20,7 @@ var (
 
 func assertTrue(t *testing.T, ok bool) {
 	t.Helper()
+
 	if !ok {
 		t.Fatal(ok)
 	}
@@ -27,6 +28,7 @@ func assertTrue(t *testing.T, ok bool) {
 
 func requireLen(t *testing.T, x any, l int) {
 	t.Helper()
+
 	v := reflect.ValueOf(x)
 	if l != v.Len() {
 		t.Fatal()
@@ -35,6 +37,7 @@ func requireLen(t *testing.T, x any, l int) {
 
 func assertEqual(t *testing.T, expected, actual any) {
 	t.Helper()
+
 	if expected == nil || actual == nil {
 		if expected != actual {
 			t.Fatal(expected, actual)
@@ -53,11 +56,12 @@ func TestClient_Leader(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	client, err := client.New(ctx, node.BindAddress())
+	c, err := client.New(ctx, node.BindAddress())
 	requireNoError(t, err)
-	defer client.Close()
 
-	leader, err := client.Leader(context.Background())
+	defer c.Close()
+
+	leader, err := c.Leader(context.Background())
 	requireNoError(t, err)
 
 	assertEqual(t, leader.ID, uint64(1))
@@ -73,6 +77,7 @@ func TestClient_Dump(t *testing.T) {
 
 	client, err := client.New(ctx, node.BindAddress())
 	requireNoError(t, err)
+
 	defer client.Close()
 
 	// Open a database and create a test table.
@@ -116,6 +121,7 @@ func TestClient_Cluster(t *testing.T) {
 
 	cli, err := client.New(ctx, node.BindAddress())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	servers, err := cli.Cluster(context.Background())
@@ -136,6 +142,7 @@ func TestClient_Transfer(t *testing.T) {
 
 	cli, err := client.New(ctx, node1.BindAddress())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	node2, cleanup := addNode(t, cli, 2)
@@ -153,6 +160,7 @@ func TestClient_Transfer(t *testing.T) {
 
 	cli, err = client.New(ctx, node2.BindAddress())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	leader, err = cli.Leader(context.Background())
@@ -169,6 +177,7 @@ func TestClient_Describe(t *testing.T) {
 
 	cli, err := client.New(ctx, node.BindAddress())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	metadata, err := cli.Describe(context.Background())
@@ -241,7 +250,7 @@ func addNode(t *testing.T, cli *client.Client, id uint64) (*cowsql.Node, func())
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := os.MkdirTemp("", "cowsql-replication-test-")
+	dir, err := os.MkdirTemp("", "cowsql-replication-test-") //nolint:usetesting
 	assertNoError(t, err)
 
 	cleanup := func() {

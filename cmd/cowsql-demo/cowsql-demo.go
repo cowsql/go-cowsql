@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,19 +16,22 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cowsql/go-cowsql/app"
 	"github.com/cowsql/go-cowsql/client"
-	"github.com/spf13/cobra"
 )
 
 func main() {
-	var api string
-	var db string
-	var join *[]string
-	var dir string
-	var verbose bool
-	var crt string
-	var key string
+	var (
+		api     string
+		db      string
+		join    *[]string
+		dir     string
+		verbose bool
+		crt     string
+		key     string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "cowsql-demo",
@@ -37,13 +41,17 @@ func main() {
 Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := filepath.Join(dir, db)
-			if err := os.MkdirAll(dir, 0o755); err != nil {
+
+			err := os.MkdirAll(dir, 0o755)
+			if err != nil {
 				return fmt.Errorf("can't create %s: %w", dir, err)
 			}
+
 			logFunc := func(l client.LogLevel, format string, a ...any) {
 				if !verbose {
 					return
 				}
+
 				log.Printf(fmt.Sprintf("%s: %s: %s\n", api, l.String(), format), a...)
 			}
 
@@ -51,21 +59,25 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 
 			// Set TLS options
 			if (crt != "" && key == "") || (key != "" && crt == "") {
-				return fmt.Errorf("both TLS certificate and key must be given")
+				return errors.New("both TLS certificate and key must be given")
 			}
+
 			if crt != "" {
 				cert, err := tls.LoadX509KeyPair(crt, key)
 				if err != nil {
 					return err
 				}
+
 				data, err := os.ReadFile(crt)
 				if err != nil {
 					return err
 				}
+
 				pool := x509.NewCertPool()
 				if !pool.AppendCertsFromPEM(data) {
-					return fmt.Errorf("bad certificate")
+					return errors.New("bad certificate")
 				}
+
 				options = append(options, app.WithTLS(app.SimpleTLSConfig(cert, pool)))
 			}
 
@@ -74,7 +86,8 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 				return err
 			}
 
-			if err := app.Ready(context.Background()); err != nil {
+			err = app.Ready(context.Background())
+			if err != nil {
 				return err
 			}
 
@@ -83,39 +96,47 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 				return err
 			}
 
-			if _, err := db.Exec(schema); err != nil {
+			_, err = db.Exec(schema)
+			if err != nil {
 				return err
 			}
 
 			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				key := strings.TrimLeft(r.URL.Path, "/")
 				result := ""
+
 				switch r.Method {
-				case "GET":
+				case http.MethodGet:
 					row := db.QueryRow(query, key)
-					if err := row.Scan(&result); err != nil {
-						result = fmt.Sprintf("Error: %s", err.Error())
+
+					err := row.Scan(&result)
+					if err != nil {
+						result = "Error: " + err.Error()
 					}
-					break
-				case "PUT":
+
+				case http.MethodPut:
 					result = "done"
 					value, _ := io.ReadAll(r.Body)
-					if _, err := db.Exec(update, key, string(value[:])); err != nil {
-						result = fmt.Sprintf("Error: %s", err.Error())
+
+					_, err := db.Exec(update, key, string(value))
+					if err != nil {
+						result = "Error: " + err.Error()
 					}
 				default:
 					result = fmt.Sprintf("Error: unsupported method %q", r.Method)
-
 				}
-				fmt.Fprintf(w, "%s\n", result)
+
+				_, _ = fmt.Fprintf(w, "%s\n", result)
 			})
 
-			listener, err := net.Listen("tcp", api)
+			var lc net.ListenConfig
+
+			listener, err := lc.Listen(context.TODO(), "tcp", api)
 			if err != nil {
 				return err
 			}
 
-			go http.Serve(listener, nil)
+			go func() { _ = http.Serve(listener, nil) }() //nolint:gosec
 
 			ch := make(chan os.Signal, 32)
 			signal.Notify(ch, syscall.SIGPWR)
@@ -125,11 +146,11 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 
 			<-ch
 
-			listener.Close()
-			db.Close()
+			_ = listener.Close()
+			_ = db.Close()
 
-			app.Handover(context.Background())
-			app.Close()
+			_ = app.Handover(context.Background())
+			_ = app.Close()
 
 			return nil
 		},
@@ -144,10 +165,18 @@ Complete documentation is available at https://github.com/cowsql/go-cowsql`,
 	flags.StringVarP(&crt, "cert", "c", "", "public TLS cert")
 	flags.StringVarP(&key, "key", "k", "", "private TLS key")
 
-	cmd.MarkFlagRequired("api")
-	cmd.MarkFlagRequired("db")
+	err := cmd.MarkFlagRequired("api")
+	if err != nil {
+		os.Exit(1)
+	}
 
-	if err := cmd.Execute(); err != nil {
+	err = cmd.MarkFlagRequired("db")
+	if err != nil {
+		os.Exit(1)
+	}
+
+	err = cmd.Execute()
+	if err != nil {
 		os.Exit(1)
 	}
 }

@@ -11,7 +11,7 @@ import (
 	_ "github.com/mattn/go-sqlite3" // Go SQLite bindings
 )
 
-// Option that can be used to tweak node store parameters.
+// NodeStoreOption that can be used to tweak node store parameters.
 type NodeStoreOption func(*nodeStoreOptions)
 
 type nodeStoreOptions struct {
@@ -50,7 +50,7 @@ func DefaultNodeStore(filename string) (NodeStore, error) {
 	db.SetMaxOpenConns(1)
 
 	// Create the servers table if it does not exist yet.
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS servers (address TEXT, UNIQUE(address))")
+	_, err = db.ExecContext(context.TODO(), "CREATE TABLE IF NOT EXISTS servers (address TEXT, UNIQUE(address))")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create servers table: %w", err)
 	}
@@ -87,16 +87,17 @@ func WithNodeStoreWhereClause(where string) NodeStoreOption {
 
 // Get the current servers.
 func (d *DatabaseNodeStore) Get(ctx context.Context) ([]NodeInfo, error) {
-	tx, err := d.db.Begin()
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	query := fmt.Sprintf("SELECT %s FROM %s.%s", d.column, d.schema, d.table)
+	query := fmt.Sprintf("SELECT %s FROM %s.%s", d.column, d.schema, d.table) //nolint:gosec
 	if d.where != "" {
 		query += " WHERE " + d.where
 	}
+
 	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query servers table: %w", err)
@@ -104,15 +105,20 @@ func (d *DatabaseNodeStore) Get(ctx context.Context) ([]NodeInfo, error) {
 	defer rows.Close()
 
 	servers := make([]NodeInfo, 0)
+
 	for rows.Next() {
 		var address string
+
 		err := rows.Scan(&address)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch server address: %w", err)
 		}
+
 		servers = append(servers, NodeInfo{ID: 1, Address: address})
 	}
-	if err := rows.Err(); err != nil {
+
+	err = rows.Err()
+	if err != nil {
 		return nil, fmt.Errorf("result set failure: %w", err)
 	}
 
@@ -121,33 +127,56 @@ func (d *DatabaseNodeStore) Get(ctx context.Context) ([]NodeInfo, error) {
 
 // Set the servers addresses.
 func (d *DatabaseNodeStore) Set(ctx context.Context, servers []NodeInfo) error {
-	tx, err := d.db.Begin()
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	query := fmt.Sprintf("DELETE FROM %s.%s", d.schema, d.table)
-	if _, err := tx.ExecContext(ctx, query); err != nil {
-		tx.Rollback()
-		return fmt.Errorf("failed to delete existing servers rows: %w", err)
+	query := fmt.Sprintf("DELETE FROM %s.%s", d.schema, d.table) //nolint:gosec
+
+	_, err = tx.ExecContext(ctx, query)
+	if err != nil {
+		err := fmt.Errorf("failed to delete existing servers rows: %w", err)
+
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			return fmt.Errorf("failed to rollback transaction: %w", err)
+		}
+
+		return err
 	}
 
 	query = fmt.Sprintf("INSERT INTO %s.%s(%s) VALUES (?)", d.schema, d.table, d.column)
+
 	stmt, err := tx.PrepareContext(ctx, query)
 	if err != nil {
-		tx.Rollback()
-		return fmt.Errorf("failed to prepare insert statement: %w", err)
+		err := fmt.Errorf("failed to prepare insert statement: %w", err)
+
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			return fmt.Errorf("failed to rollback transaction: %w", err)
+		}
+
+		return err
 	}
 	defer stmt.Close()
 
 	for _, server := range servers {
-		if _, err := stmt.ExecContext(ctx, server.Address); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("failed to insert server %s: %w", server.Address, err)
+		_, err := stmt.ExecContext(ctx, server.Address)
+		if err != nil {
+			err := fmt.Errorf("failed to insert server %s: %w", server.Address, err)
+
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil {
+				return fmt.Errorf("failed to rollback transaction: %w", err)
+			}
+
+			return err
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	err = tx.Commit()
+	if err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 

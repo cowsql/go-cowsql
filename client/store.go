@@ -27,7 +27,7 @@ type InmemNodeStore = protocol.InmemNodeStore
 // NewInmemNodeStore creates NodeStore which stores its data in-memory.
 var NewInmemNodeStore = protocol.NewInmemNodeStore
 
-// Persists a list addresses of cowsql nodes in a YAML file.
+// YamlNodeStore Persists a list addresses of cowsql nodes in a YAML file.
 type YamlNodeStore struct {
 	path    string
 	servers []NodeInfo
@@ -49,7 +49,8 @@ func NewYamlNodeStore(path string) (*YamlNodeStore, error) {
 			return nil, err
 		}
 
-		if err := yaml.Unmarshal(data, &servers); err != nil {
+		err = yaml.Unmarshal(data, &servers)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -66,8 +67,10 @@ func NewYamlNodeStore(path string) (*YamlNodeStore, error) {
 func (s *YamlNodeStore) Get(ctx context.Context) ([]NodeInfo, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	ret := make([]NodeInfo, len(s.servers))
 	copy(ret, s.servers)
+
 	return ret, nil
 }
 
@@ -81,7 +84,8 @@ func (s *YamlNodeStore) Set(ctx context.Context, servers []NodeInfo) error {
 		return err
 	}
 
-	if err := renameio.WriteFile(s.path, data, 0o600); err != nil {
+	err = renameio.WriteFile(s.path, data, 0o600)
+	if err != nil {
 		return err
 	}
 

@@ -5,8 +5,8 @@ package bindings
 */
 import "C"
 
-// required cowsql version
+// required cowsql version.
 var (
-	cowsqlMajorVersion int = 1
-	cowsqlMinorVersion int = 14
+	cowsqlMajorVersion = 1
+	cowsqlMinorVersion = 14
 )

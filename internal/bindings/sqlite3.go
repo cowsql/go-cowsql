@@ -23,6 +23,7 @@ static int sqlite3ConfigMultiThread()
 */
 import "C"
 
+// ConfigSingleThread enables single thread mode.
 func ConfigSingleThread() error {
 	if rc := C.sqlite3ConfigSingleThread(); rc != 0 {
 		return protocol.Error{Message: C.GoString(C.sqlite3_errstr(rc)), Code: int(rc)}
@@ -30,6 +31,7 @@ func ConfigSingleThread() error {
 	return nil
 }
 
+// ConfigMultiThread enables multi thread mode.
 func ConfigMultiThread() error {
 	if rc := C.sqlite3ConfigMultiThread(); rc != 0 {
 		return protocol.Error{Message: C.GoString(C.sqlite3_errstr(rc)), Code: int(rc)}

@@ -20,4 +20,4 @@ const (
 )
 
 // DefaultLogFunc doesn't emit any message.
-func DefaultLogFunc(l LogLevel, format string, a ...any) {}
+func DefaultLogFunc(_ LogLevel, _ string, _ ...any) {}

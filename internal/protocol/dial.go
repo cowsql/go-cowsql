@@ -12,6 +12,8 @@ func Dial(ctx context.Context, address string) (net.Conn, error) {
 	if strings.HasPrefix(address, "@") {
 		family = "unix"
 	}
+
 	dialer := net.Dialer{}
+
 	return dialer.DialContext(ctx, family, address)
 }

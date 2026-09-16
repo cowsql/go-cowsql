@@ -24,9 +24,9 @@ func (r NodeRole) String() string {
 
 // NodeInfo holds information about a single server.
 type NodeInfo struct {
-	ID      uint64   `yaml:"ID"`
-	Address string   `yaml:"Address"`
-	Role    NodeRole `yaml:"Role"`
+	ID      uint64   `yaml:"ID"`      //nolint:tagliatelle
+	Address string   `yaml:"Address"` //nolint:tagliatelle
+	Role    NodeRole `yaml:"Role"`    //nolint:tagliatelle
 }
 
 // NodeStore is used by a cowsql client to get an initial list of candidate
@@ -62,8 +62,10 @@ func NewInmemNodeStore() *InmemNodeStore {
 func (i *InmemNodeStore) Get(ctx context.Context) ([]NodeInfo, error) {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
+
 	ret := make([]NodeInfo, len(i.servers))
 	copy(ret, i.servers)
+
 	return ret, nil
 }
 
@@ -71,6 +73,8 @@ func (i *InmemNodeStore) Get(ctx context.Context) ([]NodeInfo, error) {
 func (i *InmemNodeStore) Set(ctx context.Context, servers []NodeInfo) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
+
 	i.servers = servers
+
 	return nil
 }

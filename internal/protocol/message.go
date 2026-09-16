@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -15,6 +16,8 @@ import (
 // schema.sh to generate encoding logic for statement parameters.
 type NamedValues = []driver.NamedValue
 
+// NamedValues32 is a type alias of a slice of driver.NamedValue. It's used by
+// schema.sh to generate encoding logic for statement parameters.
 type NamedValues32 = []driver.NamedValue
 
 // Nodes is a type alias of a slice of NodeInfo. It's used by schema.sh to
@@ -38,6 +41,7 @@ func (m *Message) Init(initialBufferSize int) {
 	if (initialBufferSize % messageWordSize) != 0 {
 		panic("initial buffer size is not aligned to word boundary")
 	}
+
 	m.header = make([]byte, messageHeaderSize)
 	m.body.Bytes = make([]byte, initialBufferSize)
 	m.reset()
@@ -48,10 +52,12 @@ func (m *Message) reset() {
 	m.words = 0
 	m.mtype = 0
 	m.schema = 0
+
 	m.extra = 0
 	for i := range messageHeaderSize {
 		m.header[i] = 0
 	}
+
 	m.body.Offset = 0
 }
 
@@ -76,7 +82,7 @@ func (m *Message) putBlob(v []byte) {
 	offset += len(v)
 
 	// Add padding
-	for i := 0; i < pad; i++ {
+	for range pad {
 		b.Bytes[offset] = 0
 		offset++
 	}
@@ -85,6 +91,7 @@ func (m *Message) putBlob(v []byte) {
 // Append a string to the message.
 func (m *Message) putString(v string) {
 	size := len(v) + 1
+
 	pad := 0
 	if (size % messageWordSize) != 0 {
 		// Account for padding
@@ -105,7 +112,7 @@ func (m *Message) putString(v string) {
 	offset++
 
 	// Add padding
-	for i := 0; i < pad; i++ {
+	for range pad {
 		b.Bytes[offset] = 0
 		offset++
 	}
@@ -148,7 +155,7 @@ func (m *Message) putInt64(v int64) {
 	b := m.bufferForPut(8)
 	defer b.Advance(8)
 
-	binary.LittleEndian.PutUint64(b.Bytes[b.Offset:], uint64(v))
+	binary.LittleEndian.PutUint64(b.Bytes[b.Offset:], uint64(v)) //nolint:gosec
 }
 
 // Append a floating point number to the message.
@@ -228,6 +235,7 @@ func (m *Message) putNamedValues(values NamedValues) {
 		// safeguard, should have been checked beforehand.
 		panic("too many parameters")
 	}
+
 	n := uint8(l)
 
 	m.putUint8(n)
@@ -244,6 +252,7 @@ func (m *Message) putNamedValues32(values NamedValues) {
 		// safeguard, should have been checked beforehand.
 		panic("too many parameters")
 	}
+
 	n := uint32(l)
 
 	m.putUint32(n)
@@ -265,7 +274,7 @@ func (m *Message) putHeader(mtype, schema uint8) {
 	m.schema = schema
 	m.extra = 0
 
-	m.words = uint32(m.body.Offset) / messageWordSize
+	m.words = uint32(m.body.Offset) / messageWordSize //nolint:gosec
 
 	m.finalize()
 }
@@ -305,6 +314,7 @@ func (m *Message) getString() string {
 	if index == -1 {
 		panic("no string found")
 	}
+
 	s := string(b.Bytes[b.Offset : b.Offset+index])
 
 	index++
@@ -321,19 +331,22 @@ func (m *Message) getString() string {
 
 func (m *Message) getBlob() []byte {
 	size := m.getUint64()
+
 	data := make([]byte, size)
 	for i := range data {
 		data[i] = m.getUint8()
 	}
+
 	pad := 0
 	if (size % messageWordSize) != 0 {
 		// Account for padding
 		pad = int(messageWordSize - (size % messageWordSize))
 	}
 	// Consume padding
-	for i := 0; i < pad; i++ {
+	for range pad {
 		m.getUint8()
 	}
+
 	return data
 }
 
@@ -343,14 +356,6 @@ func (m *Message) getUint8() uint8 {
 	defer b.Advance(1)
 
 	return b.Bytes[b.Offset]
-}
-
-// Read a 2-byte word from the message body.
-func (m *Message) getUint16() uint16 {
-	b := m.bufferForGet()
-	defer b.Advance(2)
-
-	return binary.LittleEndian.Uint16(b.Bytes[b.Offset:])
 }
 
 // Read a 4-byte word from the message body.
@@ -374,7 +379,7 @@ func (m *Message) getInt64() int64 {
 	b := m.bufferForGet()
 	defer b.Advance(8)
 
-	return int64(binary.LittleEndian.Uint64(b.Bytes[b.Offset:]))
+	return int64(binary.LittleEndian.Uint64(b.Bytes[b.Offset:])) //nolint:gosec
 }
 
 // Read a floating point number from the message body.
@@ -390,10 +395,10 @@ func (m *Message) getNodes() Nodes {
 	n := m.getUint64()
 	servers := make(Nodes, n)
 
-	for i := 0; i < int(n); i++ {
+	for i := range n {
 		servers[i].ID = m.getUint64()
 		servers[i].Address = m.getString()
-		servers[i].Role = NodeRole(m.getUint64())
+		servers[i].Role = NodeRole(m.getUint64()) //nolint:gosec
 	}
 
 	return servers
@@ -420,6 +425,7 @@ func (m *Message) getRows() Rows {
 		Columns: columns,
 		message: m,
 	}
+
 	return rows
 }
 
@@ -428,22 +434,25 @@ func (m *Message) getFiles() Files {
 		n:       m.getUint64(),
 		message: m,
 	}
+
 	return files
 }
 
 func (m *Message) hasBeenConsumed() bool {
 	size := int(m.words * messageWordSize)
+
 	return m.body.Offset == size
 }
 
 func (m *Message) lastByte() byte {
 	size := int(m.words * messageWordSize)
+
 	return m.body.Bytes[size-1]
 }
 
 func (m *Message) bufferForGet() *buffer {
 	size := int(m.words * messageWordSize)
-	// The static body has been exahusted, use the dynamic one.
+	// The static body has been exhausted, use the dynamic one.
 	if m.body.Offset == size {
 		err := fmt.Errorf("short message: type=%d words=%d off=%d", m.mtype, m.words, m.body.Offset)
 		panic(err)
@@ -466,7 +475,7 @@ type Rows struct {
 }
 
 // columnTypes returns the row's column types
-// if save is true, it will restore the buffer offset
+// if save is true, it will restore the buffer offset.
 func (r *Rows) columnTypes(save bool) ([]uint8, error) {
 	// use cached values if possible if not advancing the buffer offset
 	if save && r.types != nil {
@@ -487,6 +496,7 @@ func (r *Rows) columnTypes(save bool) ([]uint8, error) {
 	// Each column needs a 4 byte slot to store the column type. The row
 	// header must be padded to reach word boundary.
 	headerBits := len(r.types) * 4
+
 	padBits := 0
 	if trailingBits := (headerBits % messageWordBits); trailingBits != 0 {
 		padBits = (messageWordBits - trailingBits)
@@ -502,6 +512,7 @@ func (r *Rows) columnTypes(save bool) ([]uint8, error) {
 			if save {
 				r.message.bufferForGet().Advance(-(i + 1))
 			}
+
 			return r.types, ErrRowsPart
 		}
 
@@ -510,6 +521,7 @@ func (r *Rows) columnTypes(save bool) ([]uint8, error) {
 			if save {
 				r.message.bufferForGet().Advance(-(i + 1))
 			}
+
 			return r.types, io.EOF
 		}
 
@@ -529,9 +541,11 @@ func (r *Rows) columnTypes(save bool) ([]uint8, error) {
 
 		r.types[index] = slot >> 4
 	}
+
 	if save {
 		r.message.bufferForGet().Advance(-headerSize)
 	}
+
 	return r.types, nil
 }
 
@@ -554,6 +568,7 @@ func (r *Rows) Next(dest []driver.Value) error {
 			dest[i] = r.message.getString()
 		case Null:
 			r.message.getUint64()
+
 			dest[i] = nil
 		case UnixTime:
 			timestamp := time.Unix(r.message.getInt64(), 0)
@@ -562,18 +577,26 @@ func (r *Rows) Next(dest []driver.Value) error {
 			value := r.message.getString()
 			if value == "" {
 				dest[i] = nil
+
 				break
 			}
-			var t time.Time
-			var timeVal time.Time
-			var err error
+
+			var (
+				t       time.Time
+				timeVal time.Time
+				err     error
+			)
+
 			value = strings.TrimSuffix(value, "Z")
 			for _, format := range iso8601Formats {
-				if timeVal, err = time.ParseInLocation(format, value, time.UTC); err == nil {
+				timeVal, err = time.ParseInLocation(format, value, time.UTC)
+				if err == nil {
 					t = timeVal
+
 					break
 				}
 			}
+
 			if err != nil {
 				return err
 			}
@@ -593,19 +616,23 @@ func (r *Rows) Next(dest []driver.Value) error {
 func (r *Rows) Close() error {
 	// If we didn't go through all rows, let's look at the last byte.
 	var err error
+
 	if !r.message.hasBeenConsumed() {
 		slot := r.message.lastByte()
-		if slot == 0xee {
+		switch slot {
+		case 0xee:
 			// More rows are available.
 			err = ErrRowsPart
-		} else if slot == 0xff {
+		case 0xff:
 			// Rows EOF marker
 			err = io.EOF
-		} else {
-			err = fmt.Errorf("unexpected end of message")
+		default:
+			err = errors.New("unexpected end of message")
 		}
 	}
+
 	r.message.reset()
+
 	return err
 }
 
@@ -615,20 +642,25 @@ type Files struct {
 	message *Message
 }
 
+// Next reads the next file.
 func (f *Files) Next() (string, []byte) {
 	if f.n == 0 {
 		return "", nil
 	}
+
 	f.n--
 	name := f.message.getString()
 	length := f.message.getUint64()
+
 	data := make([]byte, length)
-	for i := 0; i < int(length); i++ {
+	for i := range length {
 		data[i] = f.message.getUint8()
 	}
+
 	return name, data
 }
 
+// Close closes the file set.
 func (f *Files) Close() {
 	f.message.reset()
 }
@@ -654,7 +686,7 @@ var iso8601Formats = []string{
 	"2006-01-02",
 }
 
-// ColumnTypes returns the column types for the the result set.
+// ColumnTypes returns the column types for the result set.
 func (r *Rows) ColumnTypes() ([]string, error) {
 	types, err := r.columnTypes(true)
 	kinds := make([]string, len(types))
@@ -671,9 +703,7 @@ func (r *Rows) ColumnTypes() ([]string, error) {
 			kinds[i] = "TEXT"
 		case Null:
 			kinds[i] = "NULL"
-		case UnixTime:
-			kinds[i] = "TIME"
-		case ISO8601:
+		case UnixTime, ISO8601:
 			kinds[i] = "TIME"
 		case Boolean:
 			kinds[i] = "BOOL"

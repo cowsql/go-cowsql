@@ -9,6 +9,7 @@ import (
 
 func assertEqual(t *testing.T, expected, actual any) {
 	t.Helper()
+
 	if expected == nil || actual == nil {
 		if expected != actual {
 			t.Fatal(expected, actual)

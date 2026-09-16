@@ -4,7 +4,7 @@ import (
 	"github.com/cowsql/go-cowsql/internal/protocol"
 )
 
-// Node roles
+// Node roles.
 const (
 	Voter   = protocol.Voter
 	StandBy = protocol.StandBy

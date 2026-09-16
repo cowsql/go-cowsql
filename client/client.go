@@ -53,13 +53,17 @@ func New(ctx context.Context, address string, options ...Option) (*Client, error
 		return nil, fmt.Errorf("failed to establish network connection: %w", err)
 	}
 
-	protocol, err := protocol.Handshake(ctx, conn, protocol.VersionOne)
+	p, err := protocol.Handshake(ctx, conn, protocol.VersionOne)
 	if err != nil {
-		conn.Close()
+		closeErr := conn.Close()
+		if closeErr != nil {
+			return nil, fmt.Errorf("failed to close connection: %w", err)
+		}
+
 		return nil, err
 	}
 
-	client := &Client{protocol: protocol}
+	client := &Client{protocol: p}
 
 	return client, nil
 }
@@ -68,12 +72,14 @@ func New(ctx context.Context, address string, options ...Option) (*Client, error
 func (c *Client) Leader(ctx context.Context) (*NodeInfo, error) {
 	request := protocol.Message{}
 	request.Init(16)
+
 	response := protocol.Message{}
 	response.Init(512)
 
 	protocol.EncodeLeader(&request)
 
-	if err := c.protocol.Call(ctx, &request, &response); err != nil {
+	err := c.protocol.Call(ctx, &request, &response)
+	if err != nil {
 		return nil, fmt.Errorf("failed to send Leader request: %w", err)
 	}
 
@@ -91,12 +97,14 @@ func (c *Client) Leader(ctx context.Context) (*NodeInfo, error) {
 func (c *Client) Cluster(ctx context.Context) ([]NodeInfo, error) {
 	request := protocol.Message{}
 	request.Init(16)
+
 	response := protocol.Message{}
 	response.Init(512)
 
 	protocol.EncodeCluster(&request, protocol.ClusterFormatV1)
 
-	if err := c.protocol.Call(ctx, &request, &response); err != nil {
+	err := c.protocol.Call(ctx, &request, &response)
+	if err != nil {
 		return nil, fmt.Errorf("failed to send Cluster request: %w", err)
 	}
 
@@ -121,12 +129,14 @@ type File struct {
 func (c *Client) Dump(ctx context.Context, dbname string) ([]File, error) {
 	request := protocol.Message{}
 	request.Init(16)
+
 	response := protocol.Message{}
 	response.Init(512)
 
 	protocol.EncodeDump(&request, dbname)
 
-	if err := c.protocol.Call(ctx, &request, &response); err != nil {
+	err := c.protocol.Call(ctx, &request, &response)
+	if err != nil {
 		return nil, fmt.Errorf("failed to send dump request: %w", err)
 	}
 
@@ -143,6 +153,7 @@ func (c *Client) Dump(ctx context.Context, dbname string) ([]File, error) {
 		if name == "" {
 			break
 		}
+
 		dump = append(dump, File{Name: name, Data: data})
 	}
 
@@ -163,11 +174,13 @@ func (c *Client) Add(ctx context.Context, node NodeInfo) error {
 
 	protocol.EncodeAdd(&request, node.ID, node.Address)
 
-	if err := c.protocol.Call(ctx, &request, &response); err != nil {
+	err := c.protocol.Call(ctx, &request, &response)
+	if err != nil {
 		return err
 	}
 
-	if err := protocol.DecodeEmpty(&response); err != nil {
+	err = protocol.DecodeEmpty(&response)
+	if err != nil {
 		return err
 	}
 
@@ -197,13 +210,19 @@ func (c *Client) Assign(ctx context.Context, id uint64, role NodeRole) error {
 	request.Init(4096)
 	response.Init(4096)
 
+	if role < 0 {
+		return fmt.Errorf("Invalid node role %d", role)
+	}
+
 	protocol.EncodeAssign(&request, id, uint64(role))
 
-	if err := c.protocol.Call(ctx, &request, &response); err != nil {
+	err := c.protocol.Call(ctx, &request, &response)
+	if err != nil {
 		return err
 	}
 
-	if err := protocol.DecodeEmpty(&response); err != nil {
+	err = protocol.DecodeEmpty(&response)
+	if err != nil {
 		return err
 	}
 
@@ -222,11 +241,13 @@ func (c *Client) Transfer(ctx context.Context, id uint64) error {
 
 	protocol.EncodeTransfer(&request, id)
 
-	if err := c.protocol.Call(ctx, &request, &response); err != nil {
+	err := c.protocol.Call(ctx, &request, &response)
+	if err != nil {
 		return err
 	}
 
-	if err := protocol.DecodeEmpty(&response); err != nil {
+	err = protocol.DecodeEmpty(&response)
+	if err != nil {
 		return err
 	}
 
@@ -237,16 +258,19 @@ func (c *Client) Transfer(ctx context.Context, id uint64) error {
 func (c *Client) Remove(ctx context.Context, id uint64) error {
 	request := protocol.Message{}
 	request.Init(4096)
+
 	response := protocol.Message{}
 	response.Init(4096)
 
 	protocol.EncodeRemove(&request, id)
 
-	if err := c.protocol.Call(ctx, &request, &response); err != nil {
+	err := c.protocol.Call(ctx, &request, &response)
+	if err != nil {
 		return err
 	}
 
-	if err := protocol.DecodeEmpty(&response); err != nil {
+	err = protocol.DecodeEmpty(&response)
+	if err != nil {
 		return err
 	}
 
@@ -255,20 +279,22 @@ func (c *Client) Remove(ctx context.Context, id uint64) error {
 
 // NodeMetadata user-defined node-level metadata.
 type NodeMetadata struct {
-	FailureDomain uint64
-	Weight        uint64
+	FailureDomain uint64 `json:"FailureDomain"` //nolint:tagliatelle
+	Weight        uint64 `json:"Weight"`        //nolint:tagliatelle
 }
 
 // Describe returns metadata about the node we're connected with.
 func (c *Client) Describe(ctx context.Context) (*NodeMetadata, error) {
 	request := protocol.Message{}
 	request.Init(4096)
+
 	response := protocol.Message{}
 	response.Init(4096)
 
 	protocol.EncodeDescribe(&request, protocol.RequestDescribeFormatV0)
 
-	if err := c.protocol.Call(ctx, &request, &response); err != nil {
+	err := c.protocol.Call(ctx, &request, &response)
+	if err != nil {
 		return nil, err
 	}
 
@@ -289,16 +315,19 @@ func (c *Client) Describe(ctx context.Context) (*NodeMetadata, error) {
 func (c *Client) Weight(ctx context.Context, weight uint64) error {
 	request := protocol.Message{}
 	request.Init(4096)
+
 	response := protocol.Message{}
 	response.Init(4096)
 
 	protocol.EncodeWeight(&request, weight)
 
-	if err := c.protocol.Call(ctx, &request, &response); err != nil {
+	err := c.protocol.Call(ctx, &request, &response)
+	if err != nil {
 		return err
 	}
 
-	if err := protocol.DecodeEmpty(&response); err != nil {
+	err = protocol.DecodeEmpty(&response)
+	if err != nil {
 		return err
 	}
 

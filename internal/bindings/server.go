@@ -67,6 +67,7 @@ import "C"
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -77,12 +78,14 @@ import (
 	"github.com/cowsql/go-cowsql/internal/protocol"
 )
 
+// Node is COWSQL node.
 type Node struct {
 	node   *C.cowsql_node
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
+// SnapshotParams are parameters for COWSQL snapshots.
 type SnapshotParams struct {
 	Threshold uint64
 	Trailing  uint64
@@ -113,7 +116,8 @@ func NewNode(ctx context.Context, id uint64, address string, dir string) (*Node,
 	cdir := C.CString(dir)
 	defer C.free(unsafe.Pointer(cdir))
 
-	if rc := C.cowsql_node_create(cid, caddress, cdir, &server); rc != 0 {
+	rc := C.cowsql_node_create(cid, caddress, cdir, &server) //nolint:gocritic
+	if rc != 0 {
 		errmsg := C.GoString(C.cowsql_node_errmsg(server))
 		C.cowsql_node_destroy(server)
 		return nil, fmt.Errorf("%s", errmsg)
@@ -125,6 +129,7 @@ func NewNode(ctx context.Context, id uint64, address string, dir string) (*Node,
 	return node, nil
 }
 
+// SetDialFunc sets the dial func to use.
 func (s *Node) SetDialFunc(dial protocol.DialFunc) error {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	connectLock.Lock()
@@ -133,11 +138,12 @@ func (s *Node) SetDialFunc(dial protocol.DialFunc) error {
 	connectRegistry[connectIndex] = dial
 	contextRegistry[connectIndex] = s.ctx
 	if rc := C.configConnectFunc(server, connectIndex); rc != 0 {
-		return fmt.Errorf("failed to set connect func")
+		return errors.New("failed to set connect func")
 	}
 	return nil
 }
 
+// SetBindAddress sets the bind address to use.
 func (s *Node) SetBindAddress(address string) error {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	caddress := C.CString(address)
@@ -148,25 +154,28 @@ func (s *Node) SetBindAddress(address string) error {
 	return nil
 }
 
+// SetNetworkLatency sets the network latency.
 func (s *Node) SetNetworkLatency(nanoseconds uint64) error {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	cnanoseconds := C.nanoseconds_t(nanoseconds)
 	if rc := C.cowsql_node_set_network_latency(server, cnanoseconds); rc != 0 {
-		return fmt.Errorf("failed to set network latency")
+		return errors.New("failed to set network latency")
 	}
 	return nil
 }
 
+// SetSnapshotParams sets the COWSQL snapshot parameters.
 func (s *Node) SetSnapshotParams(params SnapshotParams) error {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	cthreshold := C.unsigned(params.Threshold)
 	ctrailing := C.unsigned(params.Trailing)
 	if rc := C.cowsql_node_set_snapshot_params(server, cthreshold, ctrailing); rc != 0 {
-		return fmt.Errorf("failed to set snapshot params")
+		return errors.New("failed to set snapshot params")
 	}
 	return nil
 }
 
+// SetFailureDomain sets the failure domain code.
 func (s *Node) SetFailureDomain(code uint64) error {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	ccode := C.failure_domain_t(code)
@@ -176,19 +185,22 @@ func (s *Node) SetFailureDomain(code uint64) error {
 	return nil
 }
 
+// SetAutoRecovery sets auto recovery state.
 func (s *Node) SetAutoRecovery(on bool) error {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	if rc := C.cowsql_node_set_auto_recovery(server, C.bool(on)); rc != 0 {
-		return fmt.Errorf("failed to set auto-recovery behavior")
+		return errors.New("failed to set auto-recovery behavior")
 	}
 	return nil
 }
 
+// GetBindAddress returns the bind address.
 func (s *Node) GetBindAddress() string {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	return C.GoString(C.cowsql_node_get_bind_address(server))
 }
 
+// Start the connection.
 func (s *Node) Start() error {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	if rc := C.cowsql_node_start(server); rc != 0 {
@@ -198,6 +210,7 @@ func (s *Node) Start() error {
 	return nil
 }
 
+// Stop the connection.
 func (s *Node) Stop() error {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	if rc := C.cowsql_node_stop(server); rc != 0 {
@@ -213,7 +226,7 @@ func (s *Node) Close() {
 	C.cowsql_node_destroy(server)
 }
 
-// Remark that Recover doesn't take the node role into account
+// Recover attempts node recovery. It does not take the node role into account.
 func (s *Node) Recover(cluster []protocol.NodeInfo) error {
 	for i := range cluster {
 		cluster[i].Role = protocol.Voter
@@ -221,7 +234,7 @@ func (s *Node) Recover(cluster []protocol.NodeInfo) error {
 	return s.RecoverExt(cluster)
 }
 
-// RecoverExt has a similar purpose as `Recover` but takes the node role into account
+// RecoverExt has a similar purpose as `Recover` but takes the node role into account.
 func (s *Node) RecoverExt(cluster []protocol.NodeInfo) error {
 	server := (*C.cowsql_node)(unsafe.Pointer(s.node))
 	n := C.int(len(cluster))
@@ -231,7 +244,7 @@ func (s *Node) RecoverExt(cluster []protocol.NodeInfo) error {
 		cid := C.cowsql_node_id(info.ID)
 		caddress := C.CString(info.Address)
 		crole := C.int(info.Role)
-		defer C.free(unsafe.Pointer(caddress))
+		defer C.free(unsafe.Pointer(caddress)) //nolint:revive
 		C.setInfo(infos, C.unsigned(i), cid, caddress, crole)
 	}
 	if rc := C.cowsql_node_recover_ext(server, infos, n); rc != 0 {
@@ -250,7 +263,11 @@ func GenerateID(address string) uint64 {
 
 // Extract the underlying socket from a connection.
 func connToSocket(conn net.Conn) (C.int, error) {
-	file, err := conn.(fileConn).File()
+	fconn, ok := conn.(fileConn)
+	if !ok {
+		return C.int(-1), fmt.Errorf("invalid connection type %T", conn)
+	}
+	file, err := fconn.File()
 	if err != nil {
 		return C.int(-1), err
 	}
@@ -261,10 +278,13 @@ func connToSocket(conn net.Conn) (C.int, error) {
 	// close it.
 	fd2 := C.dupCloexec(fd1)
 	if fd2 < 0 {
-		return C.int(-1), fmt.Errorf("failed to dup socket fd")
+		return C.int(-1), errors.New("failed to dup socket fd")
 	}
 
-	conn.Close()
+	err = conn.Close()
+	if err != nil {
+		return C.int(-1), fmt.Errorf("failed to close connection: %w", err)
+	}
 
 	return fd2, nil
 }
@@ -308,7 +328,7 @@ var (
 )
 
 // ErrNodeStopped is returned by Node.Handle() is the server was stopped.
-var ErrNodeStopped = fmt.Errorf("server was stopped")
+var ErrNodeStopped = errors.New("server was stopped")
 
 // To compare bool values.
 var cfalse C.bool

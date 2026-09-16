@@ -99,9 +99,11 @@ func (c *RolesChanges) Handover(id uint64) (client.NodeRole, []client.NodeInfo) 
 	for i := range peers {
 		if peers[i].ID == node.ID {
 			peers = slices.Delete(peers, i, i+1)
+
 			break
 		}
 	}
+
 	domains := c.failureDomains(peers)
 
 	// Online spare nodes are always candidates.
@@ -138,8 +140,10 @@ func (c *RolesChanges) Adjust(leader uint64) (client.NodeRole, []client.NodeInfo
 			if node.ID == leader || node.Role != client.Voter {
 				continue
 			}
+
 			return client.Spare, []client.NodeInfo{node}
 		}
+
 		return -1, nil
 	}
 
@@ -174,11 +178,13 @@ func (c *RolesChanges) Adjust(leader uint64) (client.NodeRole, []client.NodeInfo
 	// them.
 	if n := len(onlineVoters); n > c.Config.Voters {
 		nodes := []client.NodeInfo{}
+
 		for _, node := range onlineVoters {
 			// Don't demote the leader.
 			if node.ID == leader {
 				continue
 			}
+
 			nodes = append(nodes, node)
 		}
 
@@ -209,11 +215,13 @@ func (c *RolesChanges) Adjust(leader uint64) (client.NodeRole, []client.NodeInfo
 	// them.
 	if n := len(onlineStandbys); n > c.Config.StandBys {
 		nodes := []client.NodeInfo{}
+
 		for _, node := range onlineStandbys {
 			// Don't demote the leader.
 			if node.ID == leader {
 				continue
 			}
+
 			nodes = append(nodes, node)
 		}
 
@@ -241,17 +249,20 @@ func (c *RolesChanges) get(id uint64) *client.NodeInfo {
 			return &node
 		}
 	}
+
 	return nil
 }
 
 // Return the online or offline nodes with the given role.
 func (c *RolesChanges) list(role client.NodeRole, online bool) []client.NodeInfo {
 	nodes := []client.NodeInfo{}
+
 	for node, metadata := range c.State {
 		if node.Role == role && metadata != nil == online {
 			nodes = append(nodes, node)
 		}
 	}
+
 	return nodes
 }
 
@@ -264,13 +275,16 @@ func (c *RolesChanges) count(role client.NodeRole, online bool) int {
 // given nodes.
 func (c *RolesChanges) failureDomains(nodes []client.NodeInfo) map[uint64]bool {
 	domains := map[uint64]bool{}
+
 	for _, node := range nodes {
 		metadata := c.State[node]
 		if metadata == nil {
 			continue
 		}
+
 		domains[metadata.FailureDomain] = true
 	}
+
 	return domains
 }
 

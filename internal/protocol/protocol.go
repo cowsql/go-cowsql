@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -46,6 +47,7 @@ func (p *Protocol) Call(ctx context.Context, request, response *Message) (err er
 		if err == nil {
 			return
 		}
+
 		var netErr *net.OpError
 		if errors.As(err, &netErr) && netErr != nil {
 			p.netErr = netErr
@@ -56,22 +58,34 @@ func (p *Protocol) Call(ctx context.Context, request, response *Message) (err er
 
 	// Honor the ctx deadline, if present.
 	if deadline, ok := ctx.Deadline(); ok {
-		p.conn.SetDeadline(deadline)
+		err := p.conn.SetDeadline(deadline)
+		if err != nil {
+			return fmt.Errorf("failed to set connection deadline: %w", err)
+		}
+
 		budget = time.Until(deadline)
-		defer p.conn.SetDeadline(time.Time{})
+
+		defer func() {
+			err := p.conn.SetDeadline(time.Time{})
+			if err != nil {
+				slog.Error("Failed to set connection deadline", "error", err)
+			}
+		}()
 	}
 
 	desc := requestDesc(request.mtype)
 
-	if err = p.send(request); err != nil {
+	err = p.send(request)
+	if err != nil {
 		return fmt.Errorf("call %s (budget %s): send: %w", desc, budget, err)
 	}
 
-	if err = p.recv(response); err != nil {
+	err = p.recv(response)
+	if err != nil {
 		return fmt.Errorf("call %s (budget %s): receive: %w", desc, budget, err)
 	}
 
-	return
+	return err
 }
 
 // More is used when a request maps to multiple responses.
@@ -89,18 +103,28 @@ func (p *Protocol) Interrupt(ctx context.Context, request *Message, response *Me
 
 	// Honor the ctx deadline, if present.
 	if deadline, ok := ctx.Deadline(); ok {
-		p.conn.SetDeadline(deadline)
-		defer p.conn.SetDeadline(time.Time{})
+		err := p.conn.SetDeadline(deadline)
+		if err != nil {
+			return fmt.Errorf("failed to set connection deadline: %w", err)
+		}
+		defer func() {
+			err := p.conn.SetDeadline(time.Time{})
+			if err != nil {
+				slog.Error("Failed to set connection deadline", "error", err)
+			}
+		}()
 	}
 
 	EncodeInterrupt(request, 0)
 
-	if err := p.send(request); err != nil {
+	err := p.send(request)
+	if err != nil {
 		return fmt.Errorf("failed to send interrupt request: %w", err)
 	}
 
 	for {
-		if err := p.recv(response); err != nil {
+		err := p.recv(response)
+		if err != nil {
 			return fmt.Errorf("failed to receive response: %w", err)
 		}
 
@@ -117,15 +141,18 @@ func (p *Protocol) Interrupt(ctx context.Context, request *Message, response *Me
 // Close the client connection.
 func (p *Protocol) Close() error {
 	close(p.closeCh)
+
 	return p.conn.Close()
 }
 
 func (p *Protocol) send(req *Message) error {
-	if err := p.sendHeader(req); err != nil {
+	err := p.sendHeader(req)
+	if err != nil {
 		return fmt.Errorf("header: %w", err)
 	}
 
-	if err := p.sendBody(req); err != nil {
+	err = p.sendBody(req)
+	if err != nil {
 		return fmt.Errorf("body: %w", err)
 	}
 
@@ -133,7 +160,7 @@ func (p *Protocol) send(req *Message) error {
 }
 
 func (p *Protocol) sendHeader(req *Message) error {
-	n, err := p.conn.Write(req.header[:])
+	n, err := p.conn.Write(req.header)
 	if err != nil {
 		return err
 	}
@@ -147,6 +174,7 @@ func (p *Protocol) sendHeader(req *Message) error {
 
 func (p *Protocol) sendBody(req *Message) error {
 	buf := req.body.Bytes[:req.body.Offset]
+
 	n, err := p.conn.Write(buf)
 	if err != nil {
 		return err
@@ -162,11 +190,13 @@ func (p *Protocol) sendBody(req *Message) error {
 func (p *Protocol) recv(res *Message) error {
 	res.reset()
 
-	if err := p.recvHeader(res); err != nil {
+	err := p.recvHeader(res)
+	if err != nil {
 		return fmt.Errorf("header: %w", err)
 	}
 
-	if err := p.recvBody(res); err != nil {
+	err = p.recvBody(res)
+	if err != nil {
 		return fmt.Errorf("body: %w", err)
 	}
 
@@ -174,7 +204,8 @@ func (p *Protocol) recv(res *Message) error {
 }
 
 func (p *Protocol) recvHeader(res *Message) error {
-	if err := p.recvPeek(res.header); err != nil {
+	err := p.recvPeek(res.header)
+	if err != nil {
 		return err
 	}
 
@@ -197,7 +228,8 @@ func (p *Protocol) recvBody(res *Message) error {
 
 	buf := res.body.Bytes[:n]
 
-	if err := p.recvPeek(buf); err != nil {
+	err := p.recvPeek(buf)
+	if err != nil {
 		return err
 	}
 
@@ -211,6 +243,7 @@ func (p *Protocol) recvPeek(buf []byte) error {
 		if err != nil {
 			return err
 		}
+
 		offset += n
 	}
 
@@ -227,13 +260,16 @@ func (p *Protocol) recvFill(buf []byte) (int, error) {
 		if n < 0 {
 			panic(errNegativeRead)
 		}
+
 		if err != nil {
 			return -1, err
 		}
+
 		if n > 0 {
 			return n, nil
 		}
 	}
+
 	return -1, io.ErrNoProgress
 }
 
@@ -301,8 +337,9 @@ func DecodeNodeCompat(protocol *Protocol, response *Message) (uint64, string, er
 		if err != nil {
 			return 0, "", err
 		}
-		return 0, address, nil
 
+		return 0, address, nil
 	}
+
 	return DecodeNode(response)
 }
