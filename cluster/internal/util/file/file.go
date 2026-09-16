@@ -23,11 +23,13 @@ func SafeCopy(dst io.Writer, src io.Reader) (int64, error) {
 	const chunkSize = 4 * 1024 * 1024
 
 	var written int64
+
 	for {
 		n, err := io.CopyN(dst, src, chunkSize)
 		written += n
+
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return written, nil
 			}
 

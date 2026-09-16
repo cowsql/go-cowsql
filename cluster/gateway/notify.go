@@ -30,10 +30,14 @@ func (g *gateway) NewNotifier(ctx context.Context, networkCert tls.CertInfo, ser
 		}, nil
 	}
 
-	var members []db.NodeInfo
-	var offlineThreshold time.Duration
+	var (
+		members          []db.NodeInfo
+		offlineThreshold time.Duration
+	)
+
 	err = transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
 		tx := g.Cluster()
+
 		offlineThreshold, err = tx.GetNodeOfflineThreshold(ctx)
 		if err != nil {
 			return fmt.Errorf("Failed getting cluster member offline threshold: %w", err)
@@ -51,6 +55,7 @@ func (g *gateway) NewNotifier(ctx context.Context, networkCert tls.CertInfo, ser
 	}
 
 	peers := []string{}
+
 	for _, member := range members {
 		if member.Address == localClusterAddress || member.Address == "0.0.0.0" {
 			continue // Exclude ourselves
@@ -63,7 +68,7 @@ func (g *gateway) NewNotifier(ctx context.Context, networkCert tls.CertInfo, ser
 			// and the node is actually up.
 			switch policy {
 			case cluster.NotifyAll:
-				if !cluster.HasConnectivity(networkCert, serverCert, member.Address, g.UserConfig().RestrictTLS()) {
+				if !cluster.HasConnectivity(networkCert, serverCert, member.Address, g.Options().RestrictTLS()) {
 					return nil, fmt.Errorf("peer node %s is down", member.Address)
 				}
 			case cluster.NotifyAlive:
@@ -76,21 +81,27 @@ func (g *gateway) NewNotifier(ctx context.Context, networkCert tls.CertInfo, ser
 	}
 
 	notifier := func(hook func(ctx context.Context, address string, networkCert, serverCert tls.CertInfo) error) []error {
-		errs := make([]error, len(peers))
+		errs := make([]error, 0, len(peers))
 		wg := sync.WaitGroup{}
 		wg.Add(len(peers))
-		for i, address := range peers {
+		var mu sync.Mutex
+
+		for _, address := range peers {
 			slog.Debug("Notify node of state changes", "address", address)
-			go func(i int, address string) {
+			go func(address string) {
 				defer wg.Done()
+
 				err := hook(ctx, address, networkCert, serverCert)
 				if err != nil {
-					errs[i] = fmt.Errorf("failed to notify peer %s: %w", address, err)
+					mu.Lock()
+					errs = append(errs, fmt.Errorf("failed to notify peer %s: %w", address, err))
+					mu.Unlock()
 				}
-			}(i, address)
+			}(address)
 		}
 
 		wg.Wait()
+
 		return errs
 	}
 

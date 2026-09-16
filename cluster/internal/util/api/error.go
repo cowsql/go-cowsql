@@ -50,7 +50,7 @@ func StatusErrorMatch(err error, matchStatusCodes ...int) (int, bool) {
 	if ok {
 		statusCode := statusErr.Status()
 
-		if len(matchStatusCodes) <= 0 {
+		if len(matchStatusCodes) == 0 {
 			return statusCode, true
 		}
 
@@ -66,5 +66,6 @@ func StatusErrorMatch(err error, matchStatusCodes ...int) (int, bool) {
 // optional status codes.
 func StatusErrorCheck(err error, matchStatusCodes ...int) bool {
 	_, found := StatusErrorMatch(err, matchStatusCodes...)
+
 	return found
 }

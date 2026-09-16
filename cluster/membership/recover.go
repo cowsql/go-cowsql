@@ -18,10 +18,14 @@ import (
 // ListDatabaseNodes returns a list of database node names.
 func ListDatabaseNodes(database db.Node) ([]string, error) {
 	nodes := []db.RaftNode{}
+
 	err := transaction.Do(context.TODO(), database, func(ctx context.Context) error {
 		tx := database
+
 		var err error
+
 		nodes, err = tx.GetRaftNodes(ctx)
+
 		return err
 	})
 	if err != nil {
@@ -29,6 +33,7 @@ func ListDatabaseNodes(database db.Node) ([]string, error) {
 	}
 
 	addresses := make([]string, 0)
+
 	for _, raftNode := range nodes {
 		if raftNode.Role != db.RaftVoter {
 			continue
@@ -44,10 +49,14 @@ func ListDatabaseNodes(database db.Node) ([]string, error) {
 func Recover(database db.Node) error {
 	// Figure out if we actually act as cowsql node.
 	var info *db.RaftNode
+
 	err := transaction.Do(context.TODO(), database, func(ctx context.Context) error {
 		tx := database
+
 		var err error
+
 		info, err = tx.DetermineRaftNode(ctx)
+
 		return err
 	})
 	if err != nil {
@@ -66,8 +75,9 @@ func Recover(database db.Node) error {
 	}
 
 	dir := database.GlobalDatabaseDir()
+
 	server, err := cowsql.New(
-		uint64(info.ID),
+		info.ID,
 		info.Address,
 		dir,
 	)
@@ -76,10 +86,10 @@ func Recover(database db.Node) error {
 	}
 
 	cluster := []cowsql.NodeInfo{
-		{ID: uint64(info.ID), Address: info.Address},
+		{ID: info.ID, Address: info.Address},
 	}
 
-	err = server.Recover(cluster)
+	err = server.Recover(cluster) //nolint:staticcheck
 	if err != nil {
 		return fmt.Errorf("Failed to recover database state: %w", err)
 	}
@@ -89,11 +99,9 @@ func Recover(database db.Node) error {
 		tx := database
 		nodes := []db.RaftNode{
 			{
-				NodeInfo: client.NodeInfo{
-					ID:      info.ID,
-					Address: info.Address,
-				},
-				Name: info.Name,
+				ID:      info.ID,
+				Address: info.Address,
+				Name:    info.Name,
 			},
 		}
 
@@ -110,9 +118,12 @@ func Recover(database db.Node) error {
 // Addresses and node roles may be updated. Node IDs are read-only.
 func Reconfigure(database db.Node, raftNodes []db.RaftNode, patchFunc func(database db.Node, nodes []client.NodeInfo) error) error {
 	var info *db.RaftNode
+
 	err := transaction.Do(context.TODO(), database, func(ctx context.Context) error {
 		tx := database
+
 		var err error
+
 		info, err = tx.DetermineRaftNode(ctx)
 
 		return err
@@ -129,7 +140,7 @@ func Reconfigure(database db.Node, raftNodes []db.RaftNode, patchFunc func(datab
 
 	nodes := make([]client.NodeInfo, 0, len(raftNodes))
 	for _, raftNode := range raftNodes {
-		nodes = append(nodes, raftNode.NodeInfo)
+		nodes = append(nodes, client.NodeInfo{ID: raftNode.ID, Address: raftNode.Address, Role: raftNode.Role})
 
 		// Get the new address for this node.
 		if raftNode.ID == info.ID {
@@ -141,6 +152,7 @@ func Reconfigure(database db.Node, raftNodes []db.RaftNode, patchFunc func(datab
 	if localAddress != info.Address {
 		err := transaction.Do(context.TODO(), database, func(ctx context.Context) error {
 			tx := database
+
 			return tx.SetClusterAddress(ctx, localAddress)
 		})
 		if err != nil {
@@ -158,6 +170,7 @@ func Reconfigure(database db.Node, raftNodes []db.RaftNode, patchFunc func(datab
 	// Replace cluster configuration in local raft_nodes database.
 	err = transaction.Do(context.TODO(), database, func(ctx context.Context) error {
 		tx := database
+
 		return tx.ReplaceRaftNodes(ctx, raftNodes)
 	})
 	if err != nil {
@@ -176,18 +189,22 @@ func RemoveRaftNode(gateway cluster.Gateway, address string) error {
 	}
 
 	var id uint64
+
 	for _, raftNode := range nodes {
 		if raftNode.Address == address {
 			id = raftNode.ID
+
 			break
 		}
 	}
+
 	if id == 0 {
 		return fmt.Errorf("No raft node with address %q", address)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
+
 	cowsqlClient, err := client.FindLeader(
 		ctx, gateway.NodeStore(),
 		client.WithDialFunc(gateway.RaftDial()),

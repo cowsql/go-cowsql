@@ -14,10 +14,13 @@ import (
 // writeJSON encodes the body as JSON and sends it back to the client
 // Accepts optional debugLogger that activates debug logging if non-nil.
 func writeJSON(w http.ResponseWriter, body any, debugLogger *slog.Logger) error {
-	var output io.Writer
-	var captured *bytes.Buffer
+	var (
+		output   io.Writer
+		captured *bytes.Buffer
+	)
 
 	output = w
+
 	if debugLogger != nil {
 		captured = &bytes.Buffer{}
 		output = io.MultiWriter(w, captured)
@@ -39,9 +42,11 @@ func writeJSON(w http.ResponseWriter, body any, debugLogger *slog.Logger) error 
 // logging the JSON (allowing for custom context to be added to the log).
 func debugJSON(title string, r *bytes.Buffer, l *slog.Logger) {
 	pretty := &bytes.Buffer{}
+
 	err := json.Indent(pretty, r.Bytes(), "\t", "\t")
 	if err != nil {
 		l.Debug("Error indenting JSON", "err", err)
+
 		return
 	}
 
@@ -54,6 +59,7 @@ func debugJSON(title string, r *bytes.Buffer, l *slog.Logger) {
 // stuck on an unreachable cluster can block it indefinitely.
 func closeOrLog(msg string, timeout time.Duration, closer func() error) {
 	done := make(chan struct{})
+
 	go func() {
 		err := closer()
 		if err != nil {

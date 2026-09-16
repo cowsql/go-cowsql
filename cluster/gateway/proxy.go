@@ -50,6 +50,7 @@ func runCowsqlProxy(stopCh chan struct{}, bindAddress string, acceptCh chan net.
 // Accepts name argument that can be used to identify the connection in the logs.
 func cowsqlProxy(name string, stopCh chan struct{}, remote net.Conn, local net.Conn) {
 	l := slog.With("name", name, "local", remote.LocalAddr(), "remote", remote.RemoteAddr())
+
 	l.Debug("Cowsql proxy started")
 	defer l.Debug("Cowsql proxy stopped")
 
@@ -85,6 +86,7 @@ func cowsqlProxy(name string, stopCh chan struct{}, remote net.Conn, local net.C
 		// Force closing, ignore errors.
 		_ = remote.Close()
 		_ = local.Close()
+
 		<-remoteToLocal
 		<-localToRemote
 	case err := <-remoteToLocal:
@@ -92,7 +94,11 @@ func cowsqlProxy(name string, stopCh chan struct{}, remote net.Conn, local net.C
 			errs[0] = fmt.Errorf("remote -> local: %w", err)
 		}
 
-		_ = local.(*net.UnixConn).CloseRead()
+		unixConn, ok := local.(*net.UnixConn)
+		if ok {
+			_ = unixConn.CloseRead()
+		}
+
 		err = <-localToRemote
 		if err != nil {
 			errs[1] = fmt.Errorf("local -> remote: %w", err)
@@ -106,6 +112,7 @@ func cowsqlProxy(name string, stopCh chan struct{}, remote net.Conn, local net.C
 		}
 
 		_ = remoteTCP.CloseRead()
+
 		err = <-remoteToLocal
 		if err != nil {
 			errs[1] = fmt.Errorf("remote -> local: %w", err)

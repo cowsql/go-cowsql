@@ -22,12 +22,15 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
 	"github.com/cowsql/go-cowsql/cluster/heartbeat"
 	"github.com/cowsql/go-cowsql/cluster/internal/response"
+	"github.com/cowsql/go-cowsql/cluster/logging"
 	"github.com/cowsql/go-cowsql/cluster/membership"
 	"github.com/cowsql/go-cowsql/cluster/options"
 	"github.com/cowsql/go-cowsql/cluster/state"
 	"github.com/cowsql/go-cowsql/cluster/tls"
+	"github.com/cowsql/go-cowsql/driver"
 )
 
+// NewGateway initializes a new gateway, setting up the COWSQL connection if the Node store contains existing cluster records.
 func NewGateway(shutdownCtx context.Context, db db.Node, networkCert tls.CertInfo, serverCert func() tls.CertInfo, state state.State, opts ...options.Option) (cluster.Gateway, error) {
 	ctx, cancel := context.WithCancel(context.TODO())
 
@@ -58,70 +61,88 @@ func NewGateway(shutdownCtx context.Context, db db.Node, networkCert tls.CertInf
 	return g, nil
 }
 
+// State returns the gateway state.
 func (g *gateway) State() state.State {
 	return g.state
 }
 
+// Node returns the gateway node store.
 func (g *gateway) Node() db.Node {
 	return g.db
 }
 
+// Cluster returns the gateway's global COWSQL database.
 func (g *gateway) Cluster() db.Cluster {
 	return g.cluster
 }
 
+// Initialize sets up the COWSQL connection.
+// The bootstrap flag should only be true when turning a non-clustered server into
+// the first (and leader) member of a new cluster.
 func (g *gateway) Initialize(bootstrap bool) error {
 	return g.init(bootstrap)
 }
 
-func (g *gateway) UserConfig() *options.Options {
+// Options returns the default or user-specified options supplied to NewGateway.
+func (g *gateway) Options() *options.Options {
 	return g.options
 }
 
+// HeartbeatOfflineThreshold returns the heartbeat offline threshold.
 func (g *gateway) HeartbeatOfflineThreshold() time.Duration {
 	if g.heartbeatOfflineThreshold != 0 {
 		return g.heartbeatOfflineThreshold
 	}
 
-	return g.UserConfig().DefaultOfflineThreshold()
+	return g.Options().DefaultOfflineThreshold()
 }
 
+// SetHeartbeatOfflineThreshold sets the heartbeat offline threshold.
 func (g *gateway) SetHeartbeatOfflineThreshold(t time.Duration) {
 	g.heartbeatOfflineThreshold = t
 }
 
+// RaftDial is the dial function for establishing raft connections.
 func (g *gateway) RaftDial() client.DialFunc {
 	return g.raftDial()
 }
 
+// Standalone returns whether this gateway is set up as standalone (true) or clustered (false).
 func (g *gateway) Standalone() bool {
 	return g.memoryDial != nil
 }
 
+// NetworkCert returns the shared cluster TLS certificate.
 func (g *gateway) NetworkCert() tls.CertInfo {
 	return g.networkCert
 }
 
+// RaftNode returns the in-memory details about the local raft node.
 func (g *gateway) RaftNode() *db.RaftNode {
 	return g.info
 }
 
+// SetRaftNode updates the in-memory local raft node.
 func (g *gateway) SetRaftNode(n *db.RaftNode) {
 	g.info = n
 }
 
+// RaftClient returns a COWSQL connection to the local node.
 func (g *gateway) RaftClient(ctx context.Context) (*client.Client, error) {
 	return client.New(ctx, g.bindAddress)
 }
 
+// SetClusterDB sets the global COWSL dataase.
 func (g *gateway) SetClusterDB(c db.Cluster) {
 	g.cluster = c
 }
 
+// SetHeartbeatNodeHook sets the hook to trigger on heartbeats.
 func (g *gateway) SetHeartbeatNodeHook(f heartbeat.Hook) {
 	g.heartbeatNodeHook = f
 }
 
+// AwaitHeartbeat waits for the heartbeat to finish.
 func (g *gateway) AwaitHeartbeat() {
 	// Wait for heartbeat to finish and then release.
 	// Ignore staticcheck "SA2001: empty critical section" because we want to wait for the lock.
@@ -129,6 +150,7 @@ func (g *gateway) AwaitHeartbeat() {
 	g.heartbeatLock.Unlock() //nolint:staticcheck
 }
 
+// ServerCert returns the local node's unique TLS certificate used for intra-cluster communication and identification.
 func (g *gateway) ServerCert() tls.CertInfo {
 	return g.serverCert()
 }
@@ -149,6 +171,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		if auth != nil {
 			trusted := auth(w, r)
 			if !trusted {
+				g.lock.RUnlock()
 				return
 			}
 		}
@@ -166,6 +189,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		version, err := strconv.Atoi(versionHeader)
 		if err != nil {
 			http.Error(w, "400 invalid cowsql version", http.StatusBadRequest)
+
 			return
 		}
 
@@ -188,27 +212,32 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		}
 
 		// Handle heartbeats (these normally come from leader, but can come from joining nodes too).
-		if r.Method == "PUT" {
+		if r.Method == http.MethodPut {
 			if g.shutdownCtx.Err() != nil {
 				slog.Warn("Rejecting heartbeat request as shutting down")
 				http.Error(w, "503 Shutting down", http.StatusServiceUnavailable)
+
 				return
 			}
 
 			var heartbeatData heartbeat.APIHeartbeat
+
 			err := json.NewDecoder(r.Body).Decode(&heartbeatData)
 			if err != nil {
 				slog.Error("Failed decoding heartbeat", "err", err)
 				http.Error(w, "400 Failed decoding heartbeat", http.StatusBadRequest)
+
 				return
 			}
 
 			g.lock.RLock()
 			isLeader, err := g.IsLeader(context.TODO())
 			g.lock.RUnlock()
+
 			if err != nil {
 				slog.Error("Failed checking if leader", "err", err)
 				http.Error(w, "500 Failed checking if leader", http.StatusInternalServerError)
+
 				return
 			}
 
@@ -218,7 +247,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		}
 
 		// Handle database upgrade notifications.
-		if r.Method == "PATCH" {
+		if r.Method == http.MethodPatch {
 			select {
 			case g.upgradeCh <- struct{}{}:
 			default:
@@ -230,9 +259,11 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		// From here on we require that this node is part of the raft
 		// cluster.
 		g.lock.RLock()
+
 		if g.server == nil || g.memoryDial != nil {
 			g.lock.RUnlock()
 			http.NotFound(w, r)
+
 			return
 		}
 
@@ -243,18 +274,20 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		//
 		// Once all nodes are on >= 4.3 this code is effectively
 		// unused.
-		if r.Method == "HEAD" {
+		if r.Method == http.MethodHead {
 			g.lock.RLock()
 			defer g.lock.RUnlock()
 			// We can safely know about current leader only if we are a voter.
 			if g.info.Role != db.RaftVoter {
 				http.NotFound(w, r)
+
 				return
 			}
 
 			cowsqlClient, err := g.RaftClient(context.TODO())
 			if err != nil {
 				http.Error(w, "500 failed to get cowsql client", http.StatusInternalServerError)
+
 				return
 			}
 
@@ -267,14 +300,17 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 
 			ctx, cancel := context.WithTimeout(g.ctx, 3*time.Second)
 			defer cancel()
+
 			leader, err := cowsqlClient.Leader(ctx)
 			if err != nil {
 				http.Error(w, "500 failed to get leader address", http.StatusInternalServerError)
+
 				return
 			}
 
 			if leader == nil || leader.ID != g.info.ID {
 				http.Error(w, "503 not leader", http.StatusServiceUnavailable)
+
 				return
 			}
 
@@ -282,19 +318,22 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		}
 
 		// Handle leader address requests.
-		if r.Method == "GET" {
+		if r.Method == http.MethodGet {
 			leader, err := g.LeaderAddress()
 			if err != nil {
 				http.Error(w, "500 no elected leader", http.StatusInternalServerError)
+
 				return
 			}
 
 			_ = writeJSON(w, map[string]string{"leader": leader}, nil)
+
 			return
 		}
 
 		if r.Header.Get("Upgrade") != "dqlite" {
 			http.Error(w, "Missing or invalid upgrade header", http.StatusBadRequest)
+
 			return
 		}
 
@@ -315,6 +354,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		err = response.Upgrade(conn, "dqlite")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+
 			_ = conn.Close()
 
 			return
@@ -324,7 +364,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 	}
 
 	return map[string]http.HandlerFunc{
-		g.UserConfig().DatabaseEndpoint(): database,
+		g.Options().DatabaseEndpoint(): database,
 	}
 }
 
@@ -367,7 +407,7 @@ func (g *gateway) DialFunc() client.DialFunc {
 		// leader is ourselves, and we were recently elected. In that case
 		// trigger a full heartbeat now: it will be a no-op if we aren't
 		// actually leaders.
-		go g.Heartbeat(g.ctx, heartbeat.HeartbeatInitial)
+		go g.Heartbeat(g.ctx, heartbeat.HeartbeatInitial) //nolint:gosec // We'll need to properly clean up context usage in this package.
 
 		return conn, nil
 	}
@@ -418,6 +458,7 @@ func (g *gateway) TransferLeadership(ctx context.Context) error {
 	}
 
 	var id uint64
+
 	for _, server := range servers {
 		if server.ID == g.info.ID || server.Role != db.RaftVoter {
 			continue
@@ -428,11 +469,12 @@ func (g *gateway) TransferLeadership(ctx context.Context) error {
 			return err
 		}
 
-		if !cluster.HasConnectivity(g.networkCert, g.serverCert(), address, g.UserConfig().RestrictTLS()) {
+		if !cluster.HasConnectivity(g.networkCert, g.serverCert(), address, g.Options().RestrictTLS()) {
 			continue
 		}
 
 		id = server.ID
+
 		break
 	}
 
@@ -466,6 +508,7 @@ func (g *gateway) ShutdownServer() error {
 	slog.Debug("Stop database gateway")
 
 	var err error
+
 	if g.server != nil {
 		if g.info.Role == db.RaftVoter {
 			g.Sync()
@@ -514,6 +557,7 @@ func (g *gateway) Sync() {
 	cowsqlClient, err := g.RaftClient(context.TODO())
 	if err != nil {
 		slog.Warn("Failed to get client", "err", err)
+
 		return
 	}
 
@@ -528,12 +572,14 @@ func (g *gateway) Sync() {
 	if err != nil {
 		// Just log a warning, since this is not fatal.
 		slog.Warn("Failed get database dump", "err", err)
+
 		return
 	}
 
 	dir := g.db.GlobalDatabaseDir()
 	for _, file := range files {
 		path := filepath.Join(dir, file.Name)
+
 		err := os.WriteFile(path, file.Data, 0o600)
 		if err != nil {
 			slog.Warn("Failed to dump database file", "file", file.Name, "err", err)
@@ -567,11 +613,12 @@ func (g *gateway) Reset(networkCert tls.CertInfo) error {
 	return nil
 }
 
-// HearbeatCancelFunc returns the function that can be used to cancel an ongoing heartbeat.
+// HeartbeatCancelFunc returns the function that can be used to cancel an ongoing heartbeat.
 // Returns nil if no ongoing heartbeat.
-func (g *gateway) HearbeatCancelFunc() func() {
+func (g *gateway) HeartbeatCancelFunc() func() {
 	g.heartbeatCancelLock.Lock()
 	defer g.heartbeatCancelLock.Unlock()
+
 	return g.heartbeatCancel
 }
 
@@ -588,16 +635,20 @@ func (g *gateway) NetworkUpdateCert(cert tls.CertInfo) {
 func (g *gateway) WaitLeadership() error {
 	n := 80
 	sleep := 250 * time.Millisecond
+
 	for range n {
 		g.lock.RLock()
+
 		isLeader, err := g.IsLeader(context.TODO())
 		if err != nil {
 			g.lock.RUnlock()
+
 			return err
 		}
 
 		if isLeader {
 			g.lock.RUnlock()
+
 			return nil
 		}
 
@@ -633,11 +684,13 @@ func (g *gateway) LeaderAddress() (string, error) {
 			leader, err := cowsqlClient.Leader(ctx)
 			if err != nil {
 				_ = cowsqlClient.Close()
+
 				return "", fmt.Errorf("Failed to get leader address: %w", err)
 			}
 
 			if leader != nil && leader.Address != "" {
 				_ = cowsqlClient.Close()
+
 				return leader.Address, nil
 			}
 
@@ -653,6 +706,7 @@ func (g *gateway) LeaderAddress() (string, error) {
 	}
 
 	var addresses []string
+
 	err := transaction.Do(context.TODO(), g.Node(), func(ctx context.Context) error {
 		nodes, err := g.db.GetRaftNodes(ctx)
 		if err != nil {
@@ -680,22 +734,55 @@ func (g *gateway) LeaderAddress() (string, error) {
 		return "", errors.New("No raft node known")
 	}
 
-	transport, cleanup, err := tls.Transport(g.networkCert, g.serverCert(), g.UserConfig().RestrictTLS())
+	transport, cleanup, err := tls.Transport(g.networkCert, g.serverCert(), g.Options().RestrictTLS())
 	if err != nil {
 		return "", err
 	}
 
 	defer cleanup()
 
-	for _, address := range addresses {
-		timeout := 2 * time.Second
+	doReq := func(ctx context.Context, timeout time.Duration, req *http.Request) (string, error) {
 		httpClient := &http.Client{
 			Transport: transport,
 			Timeout:   timeout,
 		}
 
-		requestURL := fmt.Sprintf("https://%s%s", address, g.UserConfig().DatabaseEndpoint())
-		req, err := http.NewRequest("GET", requestURL, nil)
+		// Use 1s later timeout to give HTTP client chance timeout with
+		// more useful info.
+		ctx, cancel := context.WithTimeout(ctx, timeout+time.Second)
+		defer cancel()
+
+		resp, err := httpClient.Do(req.WithContext(ctx))
+		if err != nil {
+			return "", err
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("Unexpected status code %d", resp.StatusCode)
+		}
+
+		info := map[string]string{}
+
+		err = json.NewDecoder(resp.Body).Decode(&info)
+		if err != nil {
+			return "", fmt.Errorf("Failed to parse response body: %w", err)
+		}
+
+		leader := info["leader"]
+		if leader == "" {
+			return "", errors.New("Raft node returned no leader address")
+		}
+
+		return leader, nil
+	}
+
+	for _, address := range addresses {
+		timeout := 2 * time.Second
+		requestURL := fmt.Sprintf("https://%s%s", address, g.Options().DatabaseEndpoint())
+
+		req, err := http.NewRequestWithContext(g.ctx, http.MethodGet, requestURL, nil)
 		if err != nil {
 			return "", err
 		}
@@ -704,37 +791,13 @@ func (g *gateway) LeaderAddress() (string, error) {
 
 		// Use 1s later timeout to give HTTP client chance timeout with
 		// more useful info.
-		ctx, cancel := context.WithTimeout(g.ctx, timeout+time.Second)
-		req = req.WithContext(ctx)
-		resp, err := httpClient.Do(req)
+		leader, err := doReq(g.ctx, timeout, req)
 		if err != nil {
-			cancel()
-			slog.Debug("Failed to fetch leader address", "address", address)
+			slog.Debug("Failed to fetch leader address", "address", address, "error", err)
+
 			continue
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			cancel()
-			slog.Debug("Request for leader address failed", "address", address)
-			continue
-		}
-
-		info := map[string]string{}
-		err = json.NewDecoder(resp.Body).Decode(&info)
-		if err != nil {
-			cancel()
-			slog.Debug("Failed to parse leader address", "address", address)
-			continue
-		}
-
-		leader := info["leader"]
-		if leader == "" {
-			cancel()
-			slog.Debug("Raft node returned no leader address", "address", address)
-			continue
-		}
-
-		cancel()
 		return leader, nil
 	}
 
@@ -745,7 +808,7 @@ func (g *gateway) LeaderAddress() (string, error) {
 // If there is no ongoing heartbeat then this is a no-op.
 // Returns true if new heartbeat round was started.
 func (g *gateway) HeartbeatRestart() bool {
-	heartbeatCancel := g.HearbeatCancelFunc()
+	heartbeatCancel := g.HeartbeatCancelFunc()
 
 	// There is a cancellable heartbeat round ongoing.
 	if heartbeatCancel != nil {
@@ -760,7 +823,7 @@ func (g *gateway) HeartbeatRestart() bool {
 	return false
 }
 
-// Return information about the cluster members that a currently part of the raft
+// CurrentRaftNodes returns information about the cluster members that a currently part of the raft
 // cluster, as configured in the raft log. It returns an error if this node is
 // not the leader.
 func (g *gateway) CurrentRaftNodes(ctx context.Context) ([]db.RaftNode, error) {
@@ -806,7 +869,7 @@ func (g *gateway) CurrentRaftNodes(ctx context.Context) ([]db.RaftNode, error) {
 
 		servers[i].Address = address
 
-		raftNode := db.RaftNode{NodeInfo: servers[i]}
+		raftNode := db.RaftNode{ID: servers[i].ID, Address: servers[i].Address, Role: servers[i].Role}
 		raftNodes = append(raftNodes, raftNode)
 	}
 
@@ -846,17 +909,22 @@ func (g *gateway) CurrentRaftNodes(ctx context.Context) ([]db.RaftNode, error) {
 func (g *gateway) HeartbeatInterval() time.Duration {
 	threshold := g.heartbeatOfflineThreshold
 	if threshold <= 0 {
-		threshold = g.UserConfig().DefaultOfflineThreshold()
+		threshold = g.Options().DefaultOfflineThreshold()
 	}
 
 	return threshold / 2
 }
 
+// Heartbeat triggers a heartbeat.
 func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
+	g.lock.Lock()
 	if g.cluster == nil || g.server == nil || g.memoryDial != nil {
+		g.lock.Unlock()
 		// We're not a raft node or we're not clustered
 		return
 	}
+
+	g.lock.Unlock()
 
 	// Avoid concurrent heartbeat loops.
 	// This is possible when both the regular task and the out of band heartbeat round from a cowsql
@@ -872,10 +940,12 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 	g.heartbeatCancelLock.Unlock()
 
 	defer func() {
-		heartbeatCancel := g.HearbeatCancelFunc()
+		heartbeatCancel := g.HeartbeatCancelFunc()
 		if heartbeatCancel != nil {
 			g.heartbeatCancel()
+			g.heartbeatCancelLock.Lock()
 			g.heartbeatCancel = nil
+			g.heartbeatCancelLock.Unlock()
 		}
 	}()
 
@@ -886,6 +956,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		}
 
 		slog.Error("Failed to get current raft members", "err", err)
+
 		return
 	}
 
@@ -896,13 +967,16 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 
 	err = transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
 		tx := g.Cluster()
+
 		var err error
+
 		members, err = tx.GetNodes(ctx)
 
 		return err
 	})
 	if err != nil {
 		slog.Warn("Failed to get current cluster members", "err", err)
+
 		return
 	}
 
@@ -924,15 +998,18 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 
 	err = transaction.Do(context.TODO(), g.Node(), func(ctx context.Context) error {
 		tx := g.Node()
+
 		return tx.ReplaceRaftNodes(ctx, raftNodes)
 	})
 	if err != nil {
 		slog.Warn("Failed to replace local raft members", "err", err, "mode", modeStr)
+
 		return
 	}
 
 	if localClusterAddress == "" {
 		slog.Error("No local address set, aborting heartbeat round", "mode", modeStr)
+
 		return
 	}
 
@@ -957,14 +1034,14 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 	// Send stale set to all nodes in database to get a fresh set of active nodes.
 	if mode == heartbeat.HeartbeatInitial {
 		hbState.Update(false, raftNodes, members, g.heartbeatOfflineThreshold)
-		hbState.Send(ctx, g.UserConfig().RestrictTLS(), g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
+		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
 
 		// We have the latest set of node states now, lets send that state set to all nodes.
 		hbState.FullStateList = true
-		hbState.Send(ctx, g.UserConfig().RestrictTLS(), g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
+		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
 	} else {
 		hbState.Update(true, raftNodes, members, g.heartbeatOfflineThreshold)
-		hbState.Send(ctx, g.UserConfig().RestrictTLS(), g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
+		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
 	}
 
 	// Check if context has been cancelled.
@@ -973,9 +1050,12 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 	// Look for any new node which appeared since sending last heartbeat.
 	if ctxErr == nil {
 		var currentMembers []db.NodeInfo
+
 		err = transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
 			tx := g.Cluster()
+
 			var err error
+
 			currentMembers, err = tx.GetNodes(ctx)
 			if err != nil {
 				return err
@@ -985,15 +1065,19 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		})
 		if err != nil {
 			slog.Warn("Failed to get current cluster members", "err", err, "mode", modeStr)
+
 			return
 		}
 
 		newMembers := []db.NodeInfo{}
+
 		for _, currentMember := range currentMembers {
 			existing := false
+
 			for _, member := range members {
 				if member.Address == currentMember.Address && member.ID == currentMember.ID {
 					existing = true
+
 					break
 				}
 			}
@@ -1008,14 +1092,14 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		// If any new nodes found, send heartbeat to just them (with full node state).
 		if len(newMembers) > 0 {
 			hbState.Update(true, raftNodes, members, g.heartbeatOfflineThreshold)
-			hbState.Send(ctx, g.UserConfig().RestrictTLS(), g.UserConfig().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, newMembers, 0)
+			hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, newMembers, 0)
 		}
 	}
 
 	// Initialize slice to indicate to HeartbeatNodeHook that its being called from leader.
 	unavailableMembers := make([]string, 0)
 
-	err = transaction.Retry(ctx, g.UserConfig().MaxDBRetries(), func(ctx context.Context) error {
+	err = transaction.Retry(ctx, g.Options().MaxDBRetries(), func(ctx context.Context) error {
 		// Durating cluster member fluctuations/upgrades the cluster can become unavailable so check here.
 		if g.Cluster() == nil {
 			return errors.New("Cluster unavailable")
@@ -1023,6 +1107,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 
 		return transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
 			tx := g.Cluster()
+
 			existingNodes, err := tx.GetNodes(ctx)
 			if err != nil {
 				return err
@@ -1040,6 +1125,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 					// in the process of shutting down. Either way we do not want to use this
 					// member as a candidate for role promotion.
 					unavailableMembers = append(unavailableMembers, node.Address)
+
 					continue
 				}
 
@@ -1057,12 +1143,14 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 	})
 	if err != nil {
 		slog.Error("Failed updating cluster heartbeats", "err", err)
+
 		return
 	}
 
 	// If the context has been cancelled, return prematurely after saving the members we did manage to ping.
 	if ctxErr != nil {
 		slog.Warn("Aborting heartbeat round", "err", ctxErr, "mode", modeStr)
+
 		return
 	}
 
@@ -1085,6 +1173,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 	}
 }
 
+// IsLeader returns whether this member is the COWSQL leader.
 func (g *gateway) IsLeader(ctx context.Context) (bool, error) {
 	if g.server == nil || g.info.Role != db.RaftVoter {
 		return false, nil
@@ -1104,10 +1193,31 @@ func (g *gateway) IsLeader(ctx context.Context) (bool, error) {
 
 	ctx, cancel := context.WithTimeout(g.ctx, 3*time.Second)
 	defer cancel()
+
 	leader, err := cowsqlClient.Leader(ctx)
 	if err != nil {
 		return false, fmt.Errorf("Failed to get leader address: %w", err)
 	}
 
 	return leader != nil && leader.ID == g.info.ID, nil
+}
+
+// Driver creates the COWSQL database driver with the given options.
+func (g *gateway) Driver(options ...driver.Option) (*driver.Driver, error) {
+	defaultOptions := []driver.Option{
+		driver.WithDialFunc(g.DialFunc()),
+		driver.WithLogFunc(logging.CowsqlLog),
+		driver.WithContext(g.Context()),                //nolint:staticcheck
+		driver.WithConnectionTimeout(10 * time.Second), //nolint:staticcheck
+		driver.WithContextTimeout(30 * time.Second),    //nolint:staticcheck
+	}
+
+	defaultOptions = append(defaultOptions, options...)
+
+	drv, err := driver.New(g.NodeStore(), defaultOptions...)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create cowsql driver: %w", err)
+	}
+
+	return drv, nil
 }

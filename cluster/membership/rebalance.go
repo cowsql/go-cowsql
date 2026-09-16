@@ -13,8 +13,11 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/heartbeat"
 )
 
+// ChangeMemberRoleFunc is called by RebalanceMembersHook to trigger a role assignment for the cluster member with the given address.
 type ChangeMemberRoleFunc func(ctx context.Context, address string, nodes []db.RaftNode) error
 
+// RebalanceMembersHook is an optional hook for HeartbeatNodeHook which promotes and demotes nodes to fit MaxVotersFunc and MaxStandbyFunc.
+// If there are only 2 cluster members, one will be demoted to standby to help prevent quorum loss.
 func RebalanceMembersHook(ctx context.Context, gateway cluster.Gateway, localClusterAddress string, heartbeatData *heartbeat.APIHeartbeat, isLeader bool, unavailableMembers []string, alwaysDemoteRoles []string, changeMemberRoleFunc ChangeMemberRoleFunc) {
 	// If we are leader and called from the leader heartbeat send function (unavailbleMembers != nil) and there
 	// are other members in the cluster, then check if we need to update roles. We do not want to do this if
@@ -51,23 +54,24 @@ func RebalanceMembersHook(ctx context.Context, gateway cluster.Gateway, localClu
 			}
 		}
 
-		maxVoters := gateway.UserConfig().MaxVotersFunc()()
-		maxStandBy := gateway.UserConfig().MaxStandbyFunc()()
+		maxVoters := gateway.Options().MaxVotersFunc()()
+		maxStandBy := gateway.Options().MaxStandbyFunc()()
 
 		// If there are offline members that have voter or stand-by database roles, let's see if we can
 		// replace them with spare ones. Also, if we don't have enough voters or standbys, let's see if we
 		// can upgrade some member.
 		if isDegraded || onlineVoters != int(maxVoters) || onlineStandbys != int(maxStandBy) || hasMustDemoteRoles {
 			slog.Debug("Rebalancing member roles in heartbeat", slog.String("local_address", localClusterAddress))
+
 			err := rebalanceMemberRoles(ctx, gateway, unavailableMembers, alwaysDemoteRoles, changeMemberRoleFunc)
 			if err != nil && !errors.Is(err, ErrNotLeader) {
 				slog.Warn("Could not rebalance cluster member roles", slog.Any("err", err), slog.String("local_address", localClusterAddress))
 			}
-
 		}
 
 		if hasNodesNotPartOfRaft {
 			slog.Debug("Upgrading members without raft role in heartbeat", slog.String("local_address", localClusterAddress))
+
 			err := upgradeNodesWithoutRaftRole(ctx, gateway, gateway.Cluster())
 			if err != nil && !errors.Is(err, ErrNotLeader) {
 				slog.Warn("Failed upgrading raft roles:", slog.Any("err", err), slog.String("local_address", localClusterAddress))
@@ -80,11 +84,12 @@ func RebalanceMembersHook(ctx context.Context, gateway cluster.Gateway, localClu
 // change role request if so.
 func rebalanceMemberRoles(ctx context.Context, gateway cluster.Gateway, unavailableMembers []string, exceptRoles []string, changeMemberRoleFunc ChangeMemberRoleFunc) error {
 	if ctx.Err() != nil {
-		return nil
+		return ctx.Err()
 	}
 
 again:
 	address, nodes, err := Rebalance(gateway, unavailableMembers, exceptRoles)
+
 	if err != nil {
 		return err
 	}
@@ -100,7 +105,7 @@ again:
 			continue
 		}
 
-		reachable := cluster.HasConnectivity(gateway.NetworkCert(), gateway.ServerCert(), address, gateway.UserConfig().RestrictTLS())
+		reachable := cluster.HasConnectivity(gateway.NetworkCert(), gateway.ServerCert(), address, gateway.Options().RestrictTLS())
 
 		log := slog.With(slog.String("name", member.Name), slog.Int("role", int(member.Role)))
 		if member.Role != db.RaftSpare {
@@ -110,6 +115,7 @@ again:
 			}
 
 			log.Info("Promoting cluster member")
+
 			break
 		}
 
@@ -139,8 +145,10 @@ again:
 
 func upgradeNodesWithoutRaftRole(ctx context.Context, gateway cluster.Gateway, globalDB db.Cluster) error {
 	var members []db.NodeInfo
+
 	err := transaction.Do(ctx, globalDB, func(ctx context.Context) error {
 		var err error
+
 		members, err = globalDB.GetNodes(ctx)
 		if err != nil {
 			return fmt.Errorf("Failed getting cluster members: %w", err)

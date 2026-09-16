@@ -98,6 +98,7 @@ type gateway struct {
 // the first (and leader) member of a new cluster.
 func (g *gateway) init(bootstrap bool) error {
 	slog.Debug("Initializing database gateway")
+
 	g.stopCh = make(chan struct{})
 
 	info, err := loadInfo(g.db)
@@ -134,12 +135,14 @@ func (g *gateway) init(bootstrap bool) error {
 
 			g.memoryDial = cowsqlMemoryDial(g.bindAddress)
 			g.store.inMemory = client.NewInmemNodeStore()
-			err = g.store.Set(context.Background(), []client.NodeInfo{info.NodeInfo})
+
+			err = g.store.Set(context.Background(), []client.NodeInfo{{ID: info.ID, Address: info.Address, Role: info.Role}})
 			if err != nil {
 				return fmt.Errorf("Failed setting node info in store: %w", err)
 			}
 		} else {
 			go runCowsqlProxy(g.stopCh, g.bindAddress, g.acceptCh)
+
 			g.store.inMemory = nil
 			options = append(options, cowsql.WithDialFunc(g.raftDial()))
 		}
@@ -160,10 +163,10 @@ func (g *gateway) init(bootstrap bool) error {
 		if bootstrap {
 			slog.Debug("Bootstrap database gateway", "id", info.ID, "address", info.Address)
 			cluster := []cowsql.NodeInfo{
-				{ID: uint64(info.ID), Address: info.Address},
+				{ID: info.ID, Address: info.Address},
 			}
 
-			err = server.Recover(cluster)
+			err = server.Recover(cluster) //nolint:staticcheck
 			if err != nil {
 				return fmt.Errorf("Failed to recover database state: %w", err)
 			}
@@ -210,8 +213,10 @@ func (g *gateway) nodeAddress(ctx context.Context, raftAddress string) (string, 
 	}
 
 	var address string
+
 	err := transaction.Do(ctx, g.Node(), func(ctx context.Context) error {
 		var err error
+
 		raftNode, found, err := g.db.GetRaftNode(ctx, 1)
 		if err != nil {
 			return fmt.Errorf("Failed to fetch raft server address: %w", err)
@@ -272,18 +277,18 @@ func (g *gateway) raftDial() client.DialFunc {
 }
 
 func cowsqlNetworkDial(ctx context.Context, name string, addr string, g *gateway) (net.Conn, error) {
-	transport, cleanup, err := tls.Transport(g.networkCert, g.serverCert(), g.UserConfig().RestrictTLS())
+	transport, cleanup, err := tls.Transport(g.networkCert, g.serverCert(), g.Options().RestrictTLS())
 	if err != nil {
 		return nil, err
 	}
 
 	defer cleanup()
 
-	path := fmt.Sprintf("https://%s%s", addr, g.UserConfig().DatabaseEndpoint())
+	path := fmt.Sprintf("https://%s%s", addr, g.Options().DatabaseEndpoint())
 
 	// Establish the connection
 	req := &http.Request{
-		Method:     "POST",
+		Method:     http.MethodPost,
 		Proto:      "HTTP/1.1",
 		ProtoMajor: 1,
 		ProtoMinor: 1,
@@ -333,17 +338,21 @@ func cowsqlNetworkDial(ctx context.Context, name string, addr string, g *gateway
 		return nil, fmt.Errorf("Failed to read response: %w", err)
 	}
 
+	defer resp.Body.Close()
+
 	// If the remote server has detected that we are out of date, let's
 	// trigger an upgrade.
 	if resp.StatusCode == http.StatusUpgradeRequired {
 		g.lock.Lock()
 		defer g.lock.Unlock()
+
 		if !g.upgradeTriggered {
 			err = membership.TriggerUpdate(g)
 			if err == nil {
 				g.upgradeTriggered = true
 			}
 		}
+
 		return nil, errors.New("Upgrade needed")
 	}
 
@@ -356,6 +365,7 @@ func cowsqlNetworkDial(ctx context.Context, name string, addr string, g *gateway
 	}
 
 	reverter.Success()
+
 	return conn, nil
 }
 
@@ -384,56 +394,56 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 		}
 
 		g.timeSkew = true
-	} else {
-		if g.timeSkew {
-			slog.Warn("Time skew resolved")
+	} else if g.timeSkew {
+		slog.Warn("Time skew resolved")
 
-			if g.Cluster() != nil {
-				warnings, ok := g.Cluster().(db.ClusterWarningHandler)
-				if ok {
-					err := transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
-						return warnings.ResolveTimeSkewWarning(ctx, g.info.Name)
-					})
-					if err != nil {
-						slog.Warn("Failed to resolve cluster time skew warning", "err", err)
-					}
+		if g.Cluster() != nil {
+			warnings, ok := g.Cluster().(db.ClusterWarningHandler)
+			if ok {
+				err := transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
+					return warnings.ResolveTimeSkewWarning(ctx, g.info.Name)
+				})
+				if err != nil {
+					slog.Warn("Failed to resolve cluster time skew warning", "err", err)
 				}
 			}
-
-			g.timeSkew = false
 		}
+
+		g.timeSkew = false
 	}
 
 	// Extract the raft nodes from the heartbeat info.
 	raftNodes := make([]db.RaftNode, 0)
+
 	for _, member := range hbData.Members {
 		if member.RaftID > 0 {
 			raftNodes = append(raftNodes, db.RaftNode{
-				NodeInfo: client.NodeInfo{
-					ID:      member.RaftID,
-					Address: member.Address,
-					Role:    db.RaftRole(member.RaftRole),
-				},
-				Name: member.Name,
+				ID:      member.RaftID,
+				Address: member.Address,
+				Role:    db.RaftRole(member.RaftRole),
+				Name:    member.Name,
 			})
 		}
 	}
 
 	// Check we have been sent at least 1 raft node before wiping our set.
-	if len(raftNodes) <= 0 {
+	if len(raftNodes) == 0 {
 		slog.Error("Empty raft member set received")
 		http.Error(w, "400 Empty raft member set received", http.StatusBadRequest)
+
 		return
 	}
 
 	// Accept raft node list from any heartbeat type so that we get freshest data quickly.
 	slog.Debug("Replace current raft nodes", "raft_members", raftNodes)
+
 	err = transaction.Do(context.TODO(), g.Node(), func(ctx context.Context) error {
 		return g.Node().ReplaceRaftNodes(ctx, raftNodes)
 	})
 	if err != nil {
 		slog.Error("Error updating raft members", "err", err)
 		http.Error(w, "500 failed to update raft nodes", http.StatusInternalServerError)
+
 		return
 	}
 
@@ -453,6 +463,7 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 		if isLeader {
 			slog.Error("Partial heartbeat should not be sent to leader")
 			http.Error(w, "400 Partial heartbeat should not be sent to leader", http.StatusBadRequest)
+
 			return
 		}
 

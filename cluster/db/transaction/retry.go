@@ -44,17 +44,20 @@ func Retry(ctx context.Context, maxRetries int, f func(ctx context.Context) erro
 		if i == 0 && i < maxRetries && errors.Is(err, context.DeadlineExceeded) {
 			slog.Debug("Database error, retrying", "attempt", i, "err", err)
 			time.Sleep(jitterDeviation(0.8, 100*time.Millisecond))
+
 			continue
 		}
 
 		// Process actual errors.
 		if !IsRetriableError(err) {
 			slog.Debug("Database error", "err", err)
+
 			break
 		}
 
 		if i == maxRetries-1 {
 			slog.Warn("Database error, giving up", "attempt", i, "err", err)
+
 			break
 		}
 
@@ -68,7 +71,8 @@ func Retry(ctx context.Context, maxRetries int, f func(ctx context.Context) erro
 func jitterDeviation(factor float64, duration time.Duration) time.Duration {
 	floor := int64(math.Floor(float64(duration) * (1 - factor)))
 	ceil := int64(math.Ceil(float64(duration) * (1 + factor)))
-	return time.Duration(rand.Int64N(ceil-floor) + floor)
+
+	return time.Duration(rand.Int64N(ceil-floor) + floor) //nolint:gosec
 }
 
 // IsRetriableError returns true if the given error might be transient and the

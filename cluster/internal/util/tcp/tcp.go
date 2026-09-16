@@ -19,7 +19,7 @@ func ExtractConn(conn net.Conn) (*net.TCPConn, error) {
 	tlsConn, ok := conn.(*tls.Conn)
 	if ok {
 		field := reflect.ValueOf(tlsConn).Elem().FieldByName("conn")
-		field = reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+		field = reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem() //nolint:gosec
 		c := field.Interface()
 
 		tcpConn, ok = c.(*net.TCPConn)

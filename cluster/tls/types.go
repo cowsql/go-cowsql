@@ -11,13 +11,12 @@ import (
 	"fmt"
 )
 
-// CertInfoImpl captures TLS certificate information about a certain public/private
+// CertInfo captures TLS certificate information about a certain public/private
 // keypair and an optional CA certificate and CRL.
 //
 // Given support for PKI setups, these few bits of information are
 // normally used and passed around together, so this structure helps with that
 // (see doc/security.md for more details).
-
 type CertInfo interface {
 	KeyPair() tls.Certificate
 	CA() *x509.Certificate
@@ -56,6 +55,7 @@ func (c *certInfo) CA() *x509.Certificate {
 // PublicKey is a convenience to encode the underlying public key to ASCII.
 func (c *certInfo) PublicKey() []byte {
 	data := c.KeyPair().Certificate[0]
+
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: data})
 }
 
@@ -79,6 +79,7 @@ func (c *certInfo) PrivateKey() []byte {
 	rsaKey, ok := c.KeyPair().PrivateKey.(*rsa.PrivateKey)
 	if ok {
 		data := x509.MarshalPKCS1PrivateKey(rsaKey)
+
 		return pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: data})
 	}
 

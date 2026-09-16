@@ -11,6 +11,7 @@ import (
 
 type tcKey struct{}
 
+// TX is like DBTX but also implements Commit and Rollback.
 type TX interface {
 	DBTX
 	transaction
@@ -45,14 +46,14 @@ type transaction interface {
 // Do starts or reuses a transaction according to the provided context and transactor.
 // Does not guarantee that a transaction has already opened when the transaction body first runs.
 func Do(ctx context.Context, t Transactor, f func(ctx context.Context) error) error {
-	return do(ctx, t, false, false, func(ctx context.Context, tx TX) error {
+	return do(ctx, t, false, false, func(ctx context.Context, _ TX) error {
 		return f(ctx)
 	})
 }
 
 // DoExclusive starts or reuses a transaction with the exclusive flag set to true for OnTxStart, otherwise the same as Do.
 func DoExclusive(ctx context.Context, t Transactor, f func(ctx context.Context) error) error {
-	return do(ctx, t, true, false, func(ctx context.Context, tx TX) error {
+	return do(ctx, t, true, false, func(ctx context.Context, _ TX) error {
 		return f(ctx)
 	})
 }
@@ -60,6 +61,7 @@ func DoExclusive(ctx context.Context, t Transactor, f func(ctx context.Context) 
 // ForceTx starts or reuses a transaction, similar to Do, but immediately opens a transaction before calling OnTxStartForce, if one is not yet started.
 func ForceTx(ctx context.Context, t Transactor, f func(context.Context, TX) error) error {
 	db := t.DBTX()
+
 	tx, ok := db.(TX)
 	if ok {
 		return f(ctx, tx)
@@ -69,13 +71,19 @@ func ForceTx(ctx context.Context, t Transactor, f func(context.Context, TX) erro
 }
 
 func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(context.Context, TX) error) (err error) {
+	if t == nil {
+		return errors.New("Transactor has not been initialized")
+	}
+
 	ctx, trans := Begin(ctx)
 	_, nestedTx := trans.(*noopTransactionContainer)
 
 	doFunc := f
+
 	if !nestedTx {
 		if force {
 			var cleanup func()
+
 			doFunc, cleanup = t.OnTxStartForce(exclusive, func(ctx context.Context, tx TX) error {
 				return f(ctx, tx)
 			})
@@ -98,7 +106,7 @@ func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(co
 	defer func() {
 		rollbackErr := trans.Rollback()
 		if rollbackErr != nil {
-			err = fmt.Errorf("Transaction rollback failed: %v, reason: %w", rollbackErr, err)
+			err = fmt.Errorf("Transaction rollback failed: %w, reason: %w", rollbackErr, err)
 		}
 	}()
 
@@ -107,7 +115,7 @@ func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(co
 	// Only assign tx if force is true, else it will be implicitly created inside doFunc.
 	forceTx := func(ctx context.Context) (TX, error) {
 		if !force {
-			return nil, nil
+			return nil, nil //nolint:nilnil
 		}
 
 		dbtx, err := BeginDBTX(ctx, t.DBTX())
@@ -142,6 +150,7 @@ func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(co
 		})
 	} else {
 		var tx TX
+
 		tx, err = forceTx(ctx)
 		if err != nil {
 			return err
@@ -200,6 +209,7 @@ func BeginDBTX(ctx context.Context, db DBTX) (DBTX, error) {
 		}
 
 		tc.tx = tx
+
 		return tx, nil
 	}
 
@@ -210,9 +220,11 @@ func BeginDBTX(ctx context.Context, db DBTX) (DBTX, error) {
 // IsActive returns whether the context detects that it is a child context within a transaction block.
 func IsActive(ctx context.Context) bool {
 	existingTC := ctx.Value(tcKey{})
+
 	return existingTC != nil
 }
 
+// Begin marks the context as having begun a transaction, if not already set.
 func Begin(ctx context.Context) (context.Context, transaction) {
 	isTC := IsActive(ctx)
 	if isTC {
@@ -220,6 +232,7 @@ func Begin(ctx context.Context) (context.Context, transaction) {
 	}
 
 	tc := &transactionContainer{}
+
 	return context.WithValue(ctx, tcKey{}, tc), tc
 }
 
@@ -244,6 +257,11 @@ func (t *transactionContainer) Rollback() error {
 	}
 
 	err := t.tx.Rollback()
+
+	t.lock.Lock()
+	t.tx = nil
+	t.lock.Unlock()
+
 	if !errors.Is(err, sql.ErrTxDone) {
 		return err
 	}

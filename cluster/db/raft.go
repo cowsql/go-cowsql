@@ -9,8 +9,11 @@ import (
 // This is just a convenience alias for the equivalent data structure in the
 // cowsql client package.
 type RaftNode struct {
-	client.NodeInfo
-	Name string
+	ID      uint64          `json:"id"`
+	Address string          `json:"address"`
+	Role    client.NodeRole `json:"role"`
+
+	Name string `json:"name"`
 }
 
 // RaftRole captures the role of cowsql/raft node.
@@ -25,5 +28,5 @@ const (
 
 // DefaultRaftNode represents a fully uninitialized raft node entry with ID: 1 and Address: 1, signifying an uninitialized system.
 func DefaultRaftNode() *RaftNode {
-	return &RaftNode{NodeInfo: client.NodeInfo{ID: 1, Address: "1"}, Name: ""}
+	return &RaftNode{ID: 1, Address: "1", Name: ""}
 }

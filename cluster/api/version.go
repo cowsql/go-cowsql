@@ -1,14 +1,14 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
+	"strconv"
 )
 
-// Current cowsql protocol version.
+// COWSQLVersion is the current cowsql protocol version.
 const COWSQLVersion = 1
 
-// Set the cowsql version header.
+// SetCOWSQLVersionHeader sets the cowsql version header.
 func SetCOWSQLVersionHeader(request *http.Request) {
-	request.Header.Set("X-Dqlite-Version", fmt.Sprintf("%d", COWSQLVersion))
+	request.Header.Set("X-Dqlite-Version", strconv.Itoa(COWSQLVersion))
 }

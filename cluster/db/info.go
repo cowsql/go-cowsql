@@ -36,6 +36,7 @@ func (n NodeInfo) IsOffline(threshold time.Duration) bool {
 	return nodeIsOffline(threshold, n.Heartbeat, n.heartbeatRefTime)
 }
 
+// SetHeartbeatRefTime sets the reference time used for IsOffline.
 func (n *NodeInfo) SetHeartbeatRefTime(t time.Time) {
 	n.heartbeatRefTime = t
 }
@@ -52,15 +53,15 @@ func nodeIsOffline(threshold time.Duration, heartbeat time.Time, refTime time.Ti
 	return heartbeat.Before(offlineTime) || heartbeat.Equal(offlineTime)
 }
 
-// APIHeartbeatMember contains specific cluster node info.
+// HeartbeatMember contains specific cluster node info.
 type HeartbeatMember struct {
-	ID            int64     // ID field value in nodes table.
-	Address       string    // Host and Port of node.
-	Name          string    // Name of cluster member.
-	RaftID        uint64    // ID field value in raft_nodes table, zero if non-raft node.
-	RaftRole      int       // Node role in the raft cluster, from the raft_nodes table
-	LastHeartbeat time.Time // Last time we received a successful response from node.
-	Online        bool      // Calculated from offline threshold and LastHeatbeat time.
-	Roles         []string  // Supplementary non-database roles the member has.
-	Updated       bool      // Has node been updated during this heartbeat run. Not sent to nodes.
+	ID            int64     `json:"id"`             // ID field value in nodes table.
+	Address       string    `json:"address"`        // Host and Port of node.
+	Name          string    `json:"name"`           // Name of cluster member.
+	RaftID        uint64    `json:"raft_id"`        // ID field value in raft_nodes table, zero if non-raft node.
+	RaftRole      int       `json:"raft_role"`      // Node role in the raft cluster, from the raft_nodes table
+	LastHeartbeat time.Time `json:"last_heartbeat"` // Last time we received a successful response from node.
+	Online        bool      `json:"online"`         // Calculated from offline threshold and LastHeatbeat time.
+	Roles         []string  `json:"roles"`          // Supplementary non-database roles the member has.
+	Updated       bool      `json:"updated"`        // Has node been updated during this heartbeat run. Not sent to nodes.
 }

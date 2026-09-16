@@ -41,6 +41,7 @@ func (r *Reverter) Success() {
 // execute the previously deferred reverter.Fail() function.
 func (r *Reverter) Clone() *Reverter {
 	rNew := New()
+
 	rNew.revertFuncs = append(make([]Hook, 0, len(r.revertFuncs)), r.revertFuncs...)
 
 	return rNew

@@ -11,7 +11,7 @@ var (
 	// The error code here is SQLITE_BUSY. As cowsql only exposes the error as text, matching must be done on the error string.
 	errClusterBusy = errors.New("a configuration change is already in progress (5)")
 
-	//  ErrNoOnlineVoter indicates that no online voter was found to transfer leadership t
+	// ErrNoOnlineVoter indicates that no online voter was found to transfer leadership to.
 	ErrNoOnlineVoter = errors.New("No online voter found")
 
 	// ErrNodeIsNotClustered indicates the node is not clustered.

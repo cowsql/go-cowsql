@@ -22,9 +22,11 @@ func HasConnectivity(networkCert tls.CertInfo, serverCert tls.CertInfo, address 
 	defer cancel()
 
 	var conn net.Conn
+
 	conn, err = transport.DialTLSContext(ctx, "tcp", address)
 	if err == nil {
 		_ = conn.Close()
+
 		return true
 	}
 

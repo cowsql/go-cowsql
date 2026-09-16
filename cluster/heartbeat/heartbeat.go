@@ -24,14 +24,19 @@ type Hook func(heartbeatData *APIHeartbeat, isLeader bool, unavailableMembers []
 // Handler represents a function that can be called when a heartbeat request arrives.
 type Handler func(w http.ResponseWriter, r *http.Request, isLeader bool, hbData *APIHeartbeat)
 
+// Mode represents the heartbeat mode.
 type Mode int
 
 const (
+	// HeartbeatNormal represents a regular interval heartbeat.
 	HeartbeatNormal Mode = iota
+	// HeartbeatImmediate represents a restarted heartbeat.
 	HeartbeatImmediate
+	// HeartbeatInitial represents a heartbeat on initial connection to the leader.
 	HeartbeatInitial
 )
 
+// Name is the human-readable name of the heartbeat mode.
 func (m *Mode) Name() string {
 	switch *m {
 	case HeartbeatNormal:
@@ -47,9 +52,9 @@ func (m *Mode) Name() string {
 
 // APIHeartbeatVersion contains max versions for all nodes in cluster.
 type APIHeartbeatVersion struct {
-	Schema           int
-	APIExtensions    int
-	MinAPIExtensions int
+	Schema           int `json:"schema"`
+	APIExtensions    int `json:"api_extensions"`
+	MinAPIExtensions int `json:"min_api_extensions"`
 }
 
 // NewAPIHearbeat returns initialized APIHeartbeat.
@@ -62,15 +67,16 @@ func NewAPIHearbeat(dbCluster db.Cluster) *APIHeartbeat {
 // APIHeartbeat contains data sent to nodes in heartbeat.
 type APIHeartbeat struct {
 	sync.Mutex // Used to control access to Members maps.
-	cluster    db.Cluster
-	Members    map[int64]db.HeartbeatMember
-	Version    APIHeartbeatVersion
-	Time       time.Time
+
+	cluster db.Cluster
+	Members map[int64]db.HeartbeatMember `json:"members"`
+	Version APIHeartbeatVersion          `json:"version"`
+	Time    time.Time                    `json:"time"`
 
 	// Indicates if heartbeat contains a fresh set of node states.
 	// This can be used to indicate to the receiving node that the state is fresh enough to
 	// trigger node refresh activities.
-	FullStateList bool
+	FullStateList bool `json:"full_state_list"`
 }
 
 // Update updates an existing APIHeartbeat struct with the raft and all node states supplied.
@@ -151,9 +157,11 @@ func (hbState *APIHeartbeat) Update(fullStateList bool, raftNodes []db.RaftNode,
 func (hbState *APIHeartbeat) Send(ctx context.Context, useTLS12 bool, databaseEndpoint string, networkCert cowsqltls.CertInfo, serverCert cowsqltls.CertInfo, localAddress string, nodes []db.NodeInfo, spreadDuration time.Duration) {
 	// Find the local member name for warning management.
 	var localName string
+
 	for _, node := range nodes {
 		if node.Address == localAddress {
 			localName = node.Name
+
 			break
 		}
 	}
@@ -169,23 +177,26 @@ func (hbState *APIHeartbeat) Send(ctx context.Context, useTLS12 bool, databaseEn
 
 			if spreadRange > 0 {
 				select {
-				case <-time.After(time.Duration(rand.Intn(spreadRange)) * time.Millisecond):
+				case <-time.After(time.Duration(rand.Intn(spreadRange)) * time.Millisecond): //nolint:gosec
 				case <-ctx.Done(): // Proceed immediately to heartbeat of member if asked to.
 				}
 			}
 		}
 
 		// Update timestamp to current, used for time skew detection
+		heartbeatData.Lock()
 		heartbeatData.Time = time.Now().UTC()
+		heartbeatData.Unlock()
 
 		// Don't use ctx here, as we still want to finish off the request if the ctx has been cancelled.
-		err := HeartbeatNode(context.Background(), useTLS12, databaseEndpoint, address, networkCert, serverCert, heartbeatData)
+		err := SendNodeHeartbeat(context.Background(), useTLS12, databaseEndpoint, address, networkCert, serverCert, heartbeatData)
 		if err == nil {
 			heartbeatData.Lock()
 			// Ensure only update nodes that exist in Members already.
 			hbNode, existing := hbState.Members[nodeID]
 			if !existing {
 				heartbeatData.Unlock()
+
 				return
 			}
 
@@ -228,19 +239,21 @@ func (hbState *APIHeartbeat) Send(ctx context.Context, useTLS12 bool, databaseEn
 			hbNode.Updated = true
 			hbState.Members[node.ID] = hbNode
 			hbState.Unlock()
+
 			continue
 		}
 
 		// Parallelize the rest.
 		heartbeatsWg.Add(1)
-		go sendHeartbeat(node.ID, node.Name, node.Address, spreadDuration, hbState)
+
+		go sendHeartbeat(node.ID, node.Name, node.Address, spreadDuration, hbState) //nolint:gosec // We'll need to properly clean up context usage in this package.
 	}
 
 	heartbeatsWg.Wait()
 }
 
-// HeartbeatNode performs a single heartbeat request against the node with the given address.
-func HeartbeatNode(taskCtx context.Context, useTLS12 bool, databaseEndpoint string, address string, networkCert cowsqltls.CertInfo, serverCert cowsqltls.CertInfo, heartbeatData *APIHeartbeat) error {
+// SendNodeHeartbeat performs a single heartbeat request against the node with the given address.
+func SendNodeHeartbeat(taskCtx context.Context, useTLS12 bool, databaseEndpoint string, address string, networkCert cowsqltls.CertInfo, serverCert cowsqltls.CertInfo, heartbeatData *APIHeartbeat) error {
 	slog.Debug("Sending heartbeat request", "address", address)
 
 	timeout := 2 * time.Second
@@ -259,14 +272,16 @@ func HeartbeatNode(taskCtx context.Context, useTLS12 bool, databaseEndpoint stri
 	}
 
 	buffer := bytes.Buffer{}
+
 	heartbeatData.Lock()
 	err = json.NewEncoder(&buffer).Encode(heartbeatData)
 	heartbeatData.Unlock()
+
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(buffer.Bytes()))
+	req, err := http.NewRequestWithContext(taskCtx, http.MethodPut, url, bytes.NewReader(buffer.Bytes()))
 	if err != nil {
 		return err
 	}
@@ -276,6 +291,7 @@ func HeartbeatNode(taskCtx context.Context, useTLS12 bool, databaseEndpoint stri
 	// Use 1s later timeout to give HTTP client chance timeout with more useful info.
 	ctx, cancel := context.WithTimeout(taskCtx, timeout+time.Second)
 	defer cancel()
+
 	req = req.WithContext(ctx)
 	req.Close = true // Immediately close the connection after the request is done
 

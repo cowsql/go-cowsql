@@ -11,6 +11,7 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/options"
 	"github.com/cowsql/go-cowsql/cluster/state"
 	"github.com/cowsql/go-cowsql/cluster/tls"
+	"github.com/cowsql/go-cowsql/driver"
 )
 
 // Gateway represents the cluster gateway implementation.
@@ -28,7 +29,7 @@ type Gateway interface {
 	Stop(connTimeout time.Duration) error
 	Sync()
 	Reset(networkCert tls.CertInfo) error
-	HearbeatCancelFunc() func()
+	HeartbeatCancelFunc() func()
 	NetworkUpdateCert(cert tls.CertInfo)
 	WaitLeadership() error
 	LeaderAddress() (string, error)
@@ -37,7 +38,7 @@ type Gateway interface {
 	Cluster() db.Cluster
 	Initialize(bootstrap bool) error
 	CurrentRaftNodes(ctx context.Context) ([]db.RaftNode, error)
-	UserConfig() *options.Options
+	Options() *options.Options
 	HeartbeatOfflineThreshold() time.Duration
 	RaftDial() client.DialFunc
 	Standalone() bool
@@ -55,4 +56,5 @@ type Gateway interface {
 	ServerCert() tls.CertInfo
 	NewNotifier(ctx context.Context, networkCert tls.CertInfo, serverCert tls.CertInfo, policy NotifierPolicy) (Notifier, error)
 	IsLeader(ctx context.Context) (bool, error)
+	Driver(opts ...driver.Option) (*driver.Driver, error)
 }

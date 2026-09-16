@@ -14,10 +14,14 @@ import (
 func loadInfo(database db.Node) (*db.RaftNode, error) {
 	// Figure out if we actually need to act as cowsql node.
 	var info *db.RaftNode
+
 	err := transaction.Do(context.TODO(), database, func(ctx context.Context) error {
 		tx := database
+
 		var err error
+
 		info, err = tx.DetermineRaftNode(ctx)
+
 		return err
 	})
 	if err != nil {
@@ -26,7 +30,7 @@ func loadInfo(database db.Node) (*db.RaftNode, error) {
 
 	// If we're not part of the cowsql cluster, there's nothing to do.
 	if info == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	if info.Address == "" {

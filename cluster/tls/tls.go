@@ -28,7 +28,7 @@ func InitTLSConfig(useTLS12 bool) *tls.Config {
 	return config
 }
 
-// Return a TLS configuration suitable for establishing intra-member network connections using the server cert.
+// ClientConfig returns a TLS configuration suitable for establishing intra-member network connections using the server cert.
 func ClientConfig(networkCert CertInfo, serverCert CertInfo, useTLS12 bool) (*tls.Config, error) {
 	if networkCert == nil {
 		return nil, errors.New("Invalid networkCert")
@@ -42,6 +42,7 @@ func ClientConfig(networkCert CertInfo, serverCert CertInfo, useTLS12 bool) (*tl
 	config := InitTLSConfig(useTLS12)
 	config.Certificates = []tls.Certificate{keypair}
 	config.RootCAs = x509.NewCertPool()
+
 	ca := serverCert.CA()
 	if ca != nil {
 		config.RootCAs.AddCert(ca)
@@ -50,6 +51,7 @@ func ClientConfig(networkCert CertInfo, serverCert CertInfo, useTLS12 bool) (*tl
 	// Since the same cluster keypair is used both as server and as client
 	// cert, let's add it to the CA pool to make it trusted.
 	networkKeypair := networkCert.KeyPair()
+
 	netCert, err := x509.ParseCertificate(networkKeypair.Certificate[0])
 	if err != nil {
 		return nil, err
@@ -67,7 +69,7 @@ func ClientConfig(networkCert CertInfo, serverCert CertInfo, useTLS12 bool) (*tl
 	return config, nil
 }
 
-// Return an http.Transport configured using the given configuration and a
+// Transport returns an http.Transport configured using the given configuration and a
 // cleanup function to use to close all connections the transport has been
 // used.
 func Transport(networkCert CertInfo, serverCert CertInfo, useTLS12 bool) (*http.Transport, func(), error) {
@@ -88,9 +90,10 @@ func Transport(networkCert CertInfo, serverCert CertInfo, useTLS12 bool) (*http.
 		TLSHandshakeTimeout:   time.Second * 5,
 	}
 
-	transport.DialTLSContext = func(ctx context.Context, network string, addr string) (net.Conn, error) {
+	transport.DialTLSContext = func(ctx context.Context, _ string, addr string) (net.Conn, error) {
 		// Establish the TCP connection.
 		dialer := net.Dialer{Timeout: 10 * time.Second}
+
 		conn, err := dialer.DialContext(ctx, "tcp", addr)
 		if err != nil {
 			return nil, fmt.Errorf("Failed connecting to HTTPS endpoint [%q]: %w", addr, err)
@@ -101,9 +104,11 @@ func Transport(networkCert CertInfo, serverCert CertInfo, useTLS12 bool) (*http.
 
 		// Validate the connection (TLSHandshakeTimeout doesn't apply to DialTLSContext).
 		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+
 		err = tlsConn.HandshakeContext(ctx)
 		if err != nil {
 			_ = conn.Close()
+
 			return nil, err
 		}
 
@@ -117,7 +122,7 @@ func Transport(networkCert CertInfo, serverCert CertInfo, useTLS12 bool) (*http.
 			return nil, errors.New("Couldn't validate peer certificate")
 		}
 
-		certBlock, _ := pem.Decode([]byte(networkCert.PublicKey()))
+		certBlock, _ := pem.Decode(networkCert.PublicKey())
 		if certBlock == nil {
 			return nil, errors.New("Invalid remote certificate")
 		}
