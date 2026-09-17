@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -37,12 +38,15 @@ func (e cowsqlProxyError) Error() string {
 func runCowsqlProxy(stopCh chan struct{}, bindAddress string, acceptCh chan net.Conn) {
 	for {
 		remote := <-acceptCh
-		local, err := net.Dial("unix", bindAddress)
+
+		var d net.Dialer
+
+		local, err := d.DialContext(context.TODO(), "unix", bindAddress)
 		if err != nil {
 			continue
 		}
 
-		go cowsqlProxy("dqlite", stopCh, remote, local)
+		go cowsqlProxy("cowsql", stopCh, remote, local)
 	}
 }
 

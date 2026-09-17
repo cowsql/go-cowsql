@@ -116,7 +116,9 @@ func (g *gateway) init(bootstrap bool) error {
 	if info != nil {
 		// Use the autobind feature of abstract unix sockets to get a
 		// random unused address.
-		listener, err := net.Listen("unix", "")
+		var lc net.ListenConfig
+
+		listener, err := lc.Listen(g.ctx, "unix", "")
 		if err != nil {
 			return fmt.Errorf("Failed to autobind unix socket: %w", err)
 		}
@@ -201,7 +203,8 @@ func (g *gateway) init(bootstrap bool) error {
 // Create a dial function that connects to the local cowsql.
 func cowsqlMemoryDial(bindAddress string) client.DialFunc {
 	return func(ctx context.Context, address string) (net.Conn, error) {
-		return net.Dial("unix", bindAddress)
+		var d net.Dialer
+		return d.DialContext(ctx, "unix", bindAddress)
 	}
 }
 
@@ -253,12 +256,16 @@ func (g *gateway) raftDial() client.DialFunc {
 			return nil, err
 		}
 
-		listener, err := net.Listen("unix", "")
+		var lc net.ListenConfig
+
+		listener, err := lc.Listen(ctx, "unix", "")
 		if err != nil {
 			return nil, fmt.Errorf("Failed to create unix listener: %w", err)
 		}
 
-		goUnix, err := net.Dial("unix", listener.Addr().String())
+		var d net.Dialer
+
+		goUnix, err := d.DialContext(ctx, "unix", listener.Addr().String())
 		if err != nil {
 			return nil, fmt.Errorf("Failed to connect to unix listener: %w", err)
 		}

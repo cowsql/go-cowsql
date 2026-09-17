@@ -84,6 +84,7 @@ func (g *gateway) NewNotifier(ctx context.Context, networkCert tls.CertInfo, ser
 		errs := make([]error, 0, len(peers))
 		wg := sync.WaitGroup{}
 		wg.Add(len(peers))
+
 		var mu sync.Mutex
 
 		for _, address := range peers {
@@ -94,6 +95,7 @@ func (g *gateway) NewNotifier(ctx context.Context, networkCert tls.CertInfo, ser
 				err := hook(ctx, address, networkCert, serverCert)
 				if err != nil {
 					mu.Lock()
+
 					errs = append(errs, fmt.Errorf("failed to notify peer %s: %w", address, err))
 					mu.Unlock()
 				}
