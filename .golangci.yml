@@ -1,0 +1,169 @@
+version: "2"
+linters:
+  default: all
+  enable:
+    - gomodguard_v2
+  disable:
+    - gomodguard
+    - canonicalheader
+    - cyclop # handled by revive
+    - depguard
+    - err113
+    - exhaustruct
+    - funlen # handled by revive
+    - gochecknoglobals
+    - gocognit
+    - goconst
+    - gocyclo
+    - ireturn
+    - lll
+    - maintidx
+    - mnd
+    - nolintlint
+    - testpackage
+    - unparam
+    - varnamelen
+    - wrapcheck
+    - wsl
+    - godox
+    - dogsled
+    - dupword
+    - errname
+    - exhaustive
+    - fatcontext
+    - funcorder
+    - gochecknoinits
+    - paralleltest
+    - prealloc
+    - inamedparam
+    - interfacebloat
+    - goprintffuncname
+    - nlreturn
+    - nonamedreturns
+    - recvcheck
+    - dupl
+    - containedctx
+    - contextcheck
+    - whitespace
+
+  settings:
+    dupl:
+      threshold: 200
+
+    gosec:
+      excludes:
+      - G304
+      - G701
+      - G702
+      - G703
+      - G704
+      - G705
+      - G706
+      config:
+        G301: "0755"
+        G306: "0644"
+
+    nestif:
+      min-complexity: 30
+
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: package-comments
+          disabled: true
+        - name: enforce-switch-style
+          disabled: true
+        - name: var-naming
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+        - name: unused-receiver
+          disabled: true
+        - name: use-waitgroup-go
+          disabled: true
+        - name: use-slices-sort
+          disabled: true
+        - name: filename-format
+          disabled: true
+        - name: confusing-naming
+          disabled: true
+        - name: import-shadowing
+          disabled: true
+        - name: add-constant
+          disabled: true
+        - name: cognitive-complexity
+          arguments:
+            - 100
+        - name: cyclomatic
+          arguments:
+            - 50
+        - name: flag-parameter
+          disabled: true
+        - name: function-length
+          arguments:
+            - 150
+            - 400
+        - name: max-control-nesting
+          arguments:
+            - 10
+        - name: line-length-limit
+          disabled: true
+        - name: max-public-structs
+          disabled: true
+        - name: nested-structs
+          disabled: true
+        - name: confusing-results
+          disabled: true
+        - name: function-result-limit
+          arguments:
+            - 8
+
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+          yaml: snake
+
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - errcheck
+        source: ^\s*defer\s+
+      - path: api/
+        text: "bad package name"
+      - path: internal/util/
+        text: "bad package name"
+      - linters:
+          - staticcheck
+        text: '^ST1005:' # Errors starting with capital letters.
+
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/cowsql/go-cowsql)
+
+    goimports:
+      local-prefixes:
+        - github.com/cowsql/go-cowsql
+
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
