@@ -383,40 +383,43 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 	// Look for time skews.
 	now := time.Now().UTC()
 
-	if hbData.Time.Add(5*time.Second).Before(now) || hbData.Time.Add(-5*time.Second).After(now) {
-		if !g.timeSkew {
-			slog.Warn("Time skew detected between leader and local", "leaderTime", hbData.Time, "localTime", now)
+	info := g.RaftNode()
+	if info != nil {
+		if hbData.Time.Add(5*time.Second).Before(now) || hbData.Time.Add(-5*time.Second).After(now) {
+			if !g.timeSkew {
+				slog.Warn("Time skew detected between leader and local", "leaderTime", hbData.Time, "localTime", now)
+
+				if g.Cluster() != nil {
+					warnings, ok := g.Cluster().(db.ClusterWarningHandler)
+					if ok {
+						err := transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
+							return warnings.EmitTimeSkewWarning(ctx, info.Name, fmt.Sprintf("leaderTime: %s, localTime: %s", hbData.Time, now))
+						})
+						if err != nil {
+							slog.Warn("Failed to create cluster time skew warning", "err", err)
+						}
+					}
+				}
+			}
+
+			g.timeSkew = true
+		} else if g.timeSkew {
+			slog.Warn("Time skew resolved")
 
 			if g.Cluster() != nil {
 				warnings, ok := g.Cluster().(db.ClusterWarningHandler)
 				if ok {
 					err := transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
-						return warnings.EmitTimeSkewWarning(ctx, g.info.Name, fmt.Sprintf("leaderTime: %s, localTime: %s", hbData.Time, now))
+						return warnings.ResolveTimeSkewWarning(ctx, info.Name)
 					})
 					if err != nil {
-						slog.Warn("Failed to create cluster time skew warning", "err", err)
+						slog.Warn("Failed to resolve cluster time skew warning", "err", err)
 					}
 				}
 			}
+
+			g.timeSkew = false
 		}
-
-		g.timeSkew = true
-	} else if g.timeSkew {
-		slog.Warn("Time skew resolved")
-
-		if g.Cluster() != nil {
-			warnings, ok := g.Cluster().(db.ClusterWarningHandler)
-			if ok {
-				err := transaction.Do(context.TODO(), g.Cluster(), func(ctx context.Context) error {
-					return warnings.ResolveTimeSkewWarning(ctx, g.info.Name)
-				})
-				if err != nil {
-					slog.Warn("Failed to resolve cluster time skew warning", "err", err)
-				}
-			}
-		}
-
-		g.timeSkew = false
 	}
 
 	// Extract the raft nodes from the heartbeat info.

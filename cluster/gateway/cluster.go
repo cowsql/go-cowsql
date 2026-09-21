@@ -119,11 +119,17 @@ func (g *gateway) NetworkCert() tls.CertInfo {
 
 // RaftNode returns the in-memory details about the local raft node.
 func (g *gateway) RaftNode() *db.RaftNode {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+
 	return g.info
 }
 
 // SetRaftNode updates the in-memory local raft node.
 func (g *gateway) SetRaftNode(n *db.RaftNode) {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+
 	g.info = n
 }
 
@@ -275,10 +281,12 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		// Once all nodes are on >= 4.3 this code is effectively
 		// unused.
 		if r.Method == http.MethodHead {
+			info := g.RaftNode()
+
 			g.lock.RLock()
 			defer g.lock.RUnlock()
 			// We can safely know about current leader only if we are a voter.
-			if g.info.Role != db.RaftVoter {
+			if info == nil || info.Role != db.RaftVoter {
 				http.NotFound(w, r)
 
 				return
@@ -308,7 +316,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 				return
 			}
 
-			if leader == nil || leader.ID != g.info.ID {
+			if leader == nil || (info != nil && leader.ID != info.ID) {
 				http.Error(w, "503 not leader", http.StatusServiceUnavailable)
 
 				return
@@ -383,7 +391,7 @@ func (g *gateway) Initialized() bool {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
 
-	return g.server != nil
+	return g.server != nil && g.info != nil
 }
 
 // DialFunc returns a dial function that can be used to connect to one of the
@@ -391,12 +399,14 @@ func (g *gateway) Initialized() bool {
 func (g *gateway) DialFunc() client.DialFunc {
 	return func(ctx context.Context, address string) (net.Conn, error) {
 		g.lock.RLock()
-		defer g.lock.RUnlock()
-
 		// Memory connection.
 		if g.memoryDial != nil {
+			defer g.lock.RUnlock()
+
 			return g.memoryDial(ctx, address)
 		}
+
+		g.lock.RUnlock()
 
 		conn, err := cowsqlNetworkDial(ctx, "dqlite", address, g)
 		if err != nil {
@@ -460,7 +470,8 @@ func (g *gateway) TransferLeadership(ctx context.Context) error {
 	var id uint64
 
 	for _, server := range servers {
-		if server.ID == g.info.ID || server.Role != db.RaftVoter {
+		info := g.RaftNode()
+		if info == nil || server.ID == info.ID || server.Role != db.RaftVoter {
 			continue
 		}
 
@@ -510,7 +521,8 @@ func (g *gateway) ShutdownServer() error {
 	var err error
 
 	if g.server != nil {
-		if g.info.Role == db.RaftVoter {
+		info := g.RaftNode()
+		if info != nil && info.Role == db.RaftVoter {
 			g.Sync()
 		}
 
@@ -550,7 +562,7 @@ func (g *gateway) Sync() {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
 
-	if g.server == nil || g.info.Role != db.RaftVoter {
+	if g.server == nil || g.info == nil || g.info.Role != db.RaftVoter {
 		return
 	}
 
@@ -671,7 +683,7 @@ func (g *gateway) LeaderAddress() (string, error) {
 	}
 
 	// If this is a voter node, return the address of the current leader, or wait a bit until one is elected.
-	if g.server != nil && g.info.Role == db.RaftVoter {
+	if g.server != nil && g.info != nil && g.info.Role == db.RaftVoter {
 		ctx, cancel := context.WithTimeout(g.ctx, 5*time.Second)
 		defer cancel()
 
@@ -1175,7 +1187,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 
 // IsLeader returns whether this member is the COWSQL leader.
 func (g *gateway) IsLeader(ctx context.Context) (bool, error) {
-	if g.server == nil || g.info.Role != db.RaftVoter {
+	if g.server == nil || g.info == nil || g.info.Role != db.RaftVoter {
 		return false, nil
 	}
 
