@@ -919,10 +919,7 @@ func (g *gateway) CurrentRaftNodes(ctx context.Context) ([]db.RaftNode, error) {
 
 // HeartbeatInterval returns heartbeat interval to use.
 func (g *gateway) HeartbeatInterval() time.Duration {
-	threshold := g.heartbeatOfflineThreshold
-	if threshold <= 0 {
-		threshold = g.Options().DefaultOfflineThreshold()
-	}
+	threshold := g.HeartbeatOfflineThreshold()
 
 	return threshold / 2
 }
@@ -1045,14 +1042,14 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 	// are likely out of date, this can happen when a node becomes a leader.
 	// Send stale set to all nodes in database to get a fresh set of active nodes.
 	if mode == heartbeat.HeartbeatInitial {
-		hbState.Update(false, raftNodes, members, g.heartbeatOfflineThreshold)
+		hbState.Update(false, raftNodes, members, g.HeartbeatOfflineThreshold())
 		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
 
 		// We have the latest set of node states now, lets send that state set to all nodes.
 		hbState.FullStateList = true
 		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
 	} else {
-		hbState.Update(true, raftNodes, members, g.heartbeatOfflineThreshold)
+		hbState.Update(true, raftNodes, members, g.HeartbeatOfflineThreshold())
 		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
 	}
 
@@ -1103,7 +1100,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 
 		// If any new nodes found, send heartbeat to just them (with full node state).
 		if len(newMembers) > 0 {
-			hbState.Update(true, raftNodes, members, g.heartbeatOfflineThreshold)
+			hbState.Update(true, raftNodes, members, g.HeartbeatOfflineThreshold())
 			hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, newMembers, 0)
 		}
 	}
