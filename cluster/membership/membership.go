@@ -546,7 +546,7 @@ func NotifyHeartbeat(gateway cluster.Gateway) {
 	wg.Go(func() {
 		var hbMembers map[int64]db.HeartbeatMember
 
-		if hbState.Members == nil {
+		if len(hbState.Members) == 0 {
 			var (
 				err              error
 				members          []db.NodeInfo
