@@ -52,9 +52,9 @@ func (m *Mode) Name() string {
 
 // APIHeartbeatVersion contains max versions for all nodes in cluster.
 type APIHeartbeatVersion struct {
-	Schema           int `json:"schema"`
-	APIExtensions    int `json:"api_extensions"`
-	MinAPIExtensions int `json:"min_api_extensions"`
+	Schema           int `json:"Schema"`           //nolint:tagliatelle
+	APIExtensions    int `json:"APIExtensions"`    //nolint:tagliatelle
+	MinAPIExtensions int `json:"MinAPIExtensions"` //nolint:tagliatelle
 }
 
 // NewAPIHearbeat returns initialized APIHeartbeat.
@@ -69,14 +69,14 @@ type APIHeartbeat struct {
 	sync.Mutex // Used to control access to Members maps.
 
 	cluster db.Cluster
-	Members map[int64]db.HeartbeatMember `json:"members"`
-	Version APIHeartbeatVersion          `json:"version"`
-	Time    time.Time                    `json:"time"`
+	Members map[int64]db.HeartbeatMember `json:"Members"` //nolint:tagliatelle
+	Version APIHeartbeatVersion          `json:"Version"` //nolint:tagliatelle
+	Time    time.Time                    `json:"Time"`    //nolint:tagliatelle
 
 	// Indicates if heartbeat contains a fresh set of node states.
 	// This can be used to indicate to the receiving node that the state is fresh enough to
 	// trigger node refresh activities.
-	FullStateList bool `json:"full_state_list"`
+	FullStateList bool `json:"FullStateList"` //nolint:tagliatelle
 }
 
 // Update updates an existing APIHeartbeat struct with the raft and all node states supplied.

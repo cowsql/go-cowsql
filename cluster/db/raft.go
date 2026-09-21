@@ -9,11 +9,10 @@ import (
 // This is just a convenience alias for the equivalent data structure in the
 // cowsql client package.
 type RaftNode struct {
-	ID      uint64          `json:"id"`
-	Address string          `json:"address"`
-	Role    client.NodeRole `json:"role"`
-
-	Name string `json:"name"`
+	ID      uint64          `json:"ID"`      //nolint:tagliatelle
+	Address string          `json:"Address"` //nolint:tagliatelle
+	Role    client.NodeRole `json:"Role"`    //nolint:tagliatelle
+	Name    string          `json:"Name"`    //nolint:tagliatelle
 }
 
 // RaftRole captures the role of cowsql/raft node.

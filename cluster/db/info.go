@@ -55,13 +55,13 @@ func nodeIsOffline(threshold time.Duration, heartbeat time.Time, refTime time.Ti
 
 // HeartbeatMember contains specific cluster node info.
 type HeartbeatMember struct {
-	ID            int64     `json:"id"`             // ID field value in nodes table.
-	Address       string    `json:"address"`        // Host and Port of node.
-	Name          string    `json:"name"`           // Name of cluster member.
-	RaftID        uint64    `json:"raft_id"`        // ID field value in raft_nodes table, zero if non-raft node.
-	RaftRole      int       `json:"raft_role"`      // Node role in the raft cluster, from the raft_nodes table
-	LastHeartbeat time.Time `json:"last_heartbeat"` // Last time we received a successful response from node.
-	Online        bool      `json:"online"`         // Calculated from offline threshold and LastHeatbeat time.
-	Roles         []string  `json:"roles"`          // Supplementary non-database roles the member has.
-	Updated       bool      `json:"updated"`        // Has node been updated during this heartbeat run. Not sent to nodes.
+	ID            int64     `json:"ID"`            //nolint:tagliatelle // ID field value in nodes table.
+	Address       string    `json:"Address"`       //nolint:tagliatelle // Host and Port of node.
+	Name          string    `json:"Name"`          //nolint:tagliatelle // Name of cluster member.
+	RaftID        uint64    `json:"RaftID"`        //nolint:tagliatelle // ID field value in raft_nodes table, zero if non-raft node.
+	RaftRole      int       `json:"RaftRole"`      //nolint:tagliatelle // Node role in the raft cluster, from the raft_nodes table
+	LastHeartbeat time.Time `json:"LastHeartbeat"` //nolint:tagliatelle // Last time we received a successful response from node.
+	Online        bool      `json:"Online"`        //nolint:tagliatelle // Calculated from offline threshold and LastHeatbeat time.
+	Roles         []string  `json:"Roles"`         //nolint:tagliatelle // Supplementary non-database roles the member has.
+	Updated       bool      `json:"Updated"`       //nolint:tagliatelle // Has node been updated during this heartbeat run.
 }
