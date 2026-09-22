@@ -284,7 +284,7 @@ func (g *gateway) raftDial() client.DialFunc {
 }
 
 func cowsqlNetworkDial(ctx context.Context, name string, addr string, g *gateway) (net.Conn, error) {
-	transport, cleanup, err := tls.Transport(g.networkCert, g.serverCert(), g.Options().RestrictTLS())
+	transport, cleanup, err := tls.Transport(g.NetworkCert(), g.ServerCert(), g.Options().RestrictTLS())
 	if err != nil {
 		return nil, err
 	}

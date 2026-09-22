@@ -109,11 +109,17 @@ func (g *gateway) RaftDial() client.DialFunc {
 
 // Standalone returns whether this gateway is set up as standalone (true) or clustered (false).
 func (g *gateway) Standalone() bool {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+
 	return g.memoryDial != nil
 }
 
 // NetworkCert returns the shared cluster TLS certificate.
 func (g *gateway) NetworkCert() tls.CertInfo {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+
 	return g.networkCert
 }
 
@@ -480,7 +486,7 @@ func (g *gateway) TransferLeadership(ctx context.Context) error {
 			return err
 		}
 
-		if !cluster.HasConnectivity(g.networkCert, g.serverCert(), address, g.Options().RestrictTLS()) {
+		if !cluster.HasConnectivity(g.NetworkCert(), g.ServerCert(), address, g.Options().RestrictTLS()) {
 			continue
 		}
 
@@ -620,7 +626,7 @@ func (g *gateway) Reset(networkCert tls.CertInfo) error {
 		return err
 	}
 
-	g.networkCert = networkCert
+	g.NetworkUpdateCert(networkCert)
 
 	return nil
 }
@@ -1037,20 +1043,21 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 	}
 
 	serverCert := g.serverCert()
+	networkCert := g.NetworkCert()
 
 	// If this leader node hasn't sent a heartbeat recently, then its node state records
 	// are likely out of date, this can happen when a node becomes a leader.
 	// Send stale set to all nodes in database to get a fresh set of active nodes.
 	if mode == heartbeat.HeartbeatInitial {
 		hbState.Update(false, raftNodes, members, g.HeartbeatOfflineThreshold())
-		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
+		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), networkCert, serverCert, localClusterAddress, members, spreadDuration)
 
 		// We have the latest set of node states now, lets send that state set to all nodes.
 		hbState.FullStateList = true
-		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
+		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), networkCert, serverCert, localClusterAddress, members, spreadDuration)
 	} else {
 		hbState.Update(true, raftNodes, members, g.HeartbeatOfflineThreshold())
-		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, members, spreadDuration)
+		hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), networkCert, serverCert, localClusterAddress, members, spreadDuration)
 	}
 
 	// Check if context has been cancelled.
@@ -1101,7 +1108,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		// If any new nodes found, send heartbeat to just them (with full node state).
 		if len(newMembers) > 0 {
 			hbState.Update(true, raftNodes, members, g.HeartbeatOfflineThreshold())
-			hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), g.networkCert, serverCert, localClusterAddress, newMembers, 0)
+			hbState.Send(ctx, g.Options().RestrictTLS(), g.Options().DatabaseEndpoint(), networkCert, serverCert, localClusterAddress, newMembers, 0)
 		}
 	}
 
