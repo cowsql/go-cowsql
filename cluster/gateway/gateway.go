@@ -71,6 +71,7 @@ type gateway struct {
 	// Used to track whether we already triggered an upgrade because we
 	// detected a peer with an higher version.
 	upgradeTriggered bool
+	upgradeLock      sync.Mutex
 
 	// Used for the heartbeat handler
 	cluster                   db.Cluster
@@ -350,15 +351,7 @@ func cowsqlNetworkDial(ctx context.Context, name string, addr string, g *gateway
 	// If the remote server has detected that we are out of date, let's
 	// trigger an upgrade.
 	if resp.StatusCode == http.StatusUpgradeRequired {
-		g.lock.Lock()
-		defer g.lock.Unlock()
-
-		if !g.upgradeTriggered {
-			err = membership.TriggerUpdate(g)
-			if err == nil {
-				g.upgradeTriggered = true
-			}
-		}
+		go g.triggerUpdateOnce()
 
 		return nil, errors.New("Upgrade needed")
 	}
@@ -478,5 +471,27 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 		}
 
 		slog.Debug("Partial heartbeat received")
+	}
+}
+
+// triggerUpdateOnce triggers a cluster update unless one already succeeded.
+// It runs the update outside of g.lock as it can sleep and spawn a process.
+func (g *gateway) triggerUpdateOnce() {
+	g.upgradeLock.Lock()
+	if g.upgradeTriggered {
+		g.upgradeLock.Unlock()
+		return
+	}
+
+	// Mark as triggered first so concurrent callers don't double-trigger.
+	g.upgradeTriggered = true
+	g.upgradeLock.Unlock()
+
+	err := membership.TriggerUpdate(g)
+	if err != nil {
+		// Allow a later attempt.
+		g.upgradeLock.Lock()
+		g.upgradeTriggered = false
+		g.upgradeLock.Unlock()
 	}
 }

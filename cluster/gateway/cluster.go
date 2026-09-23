@@ -207,14 +207,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 
 		if version != api.COWSQLVersion {
 			if version > api.COWSQLVersion {
-				g.lock.Lock()
-				if !g.upgradeTriggered {
-					err = membership.TriggerUpdate(g)
-					if err == nil {
-						g.upgradeTriggered = true
-					}
-				}
-				g.lock.Unlock()
+				go g.triggerUpdateOnce()
 				http.Error(w, "503 unsupported cowsql version", http.StatusServiceUnavailable)
 			} else {
 				http.Error(w, "426 cowsql version too old ", http.StatusUpgradeRequired)
@@ -322,7 +315,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 				return
 			}
 
-			if leader == nil || (info != nil && leader.ID != info.ID) {
+			if leader == nil || leader.ID != info.ID {
 				http.Error(w, "503 not leader", http.StatusServiceUnavailable)
 
 				return
