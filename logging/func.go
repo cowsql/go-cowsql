@@ -21,6 +21,6 @@ func Test(t *testing.T) Func {
 func Stdout() Func {
 	return func(l Level, format string, a ...any) {
 		format = fmt.Sprintf("%s: %s\n", l.String(), format)
-		fmt.Printf(format, a...)
+		fmt.Printf(format, a...) //nolint:forbidigo
 	}
 }

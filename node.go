@@ -11,7 +11,6 @@ import (
 
 // Node runs a cowsql node.
 type Node struct {
-	log         client.LogFunc // Logger
 	server      *bindings.Node // Low-level C implementation
 	acceptCh    chan error     // Receives connection handling errors
 	id          uint64
@@ -51,7 +50,7 @@ func WithBindAddress(address string) Option {
 // WithNetworkLatency sets the average one-way network latency.
 func WithNetworkLatency(latency time.Duration) Option {
 	return func(options *options) {
-		options.NetworkLatency = uint64(latency.Nanoseconds())
+		options.NetworkLatency = uint64(latency.Nanoseconds()) //nolint:gosec
 	}
 }
 
@@ -92,44 +91,63 @@ func New(id uint64, address string, dir string, options ...Option) (*Node, error
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+
 	server, err := bindings.NewNode(ctx, id, address, dir)
 	if err != nil {
 		cancel()
+
 		return nil, err
 	}
 
 	if o.DialFunc != nil {
-		if err := server.SetDialFunc(o.DialFunc); err != nil {
+		err := server.SetDialFunc(o.DialFunc)
+		if err != nil {
 			cancel()
+
 			return nil, err
 		}
 	}
+
 	if o.BindAddress != "" {
-		if err := server.SetBindAddress(o.BindAddress); err != nil {
+		err := server.SetBindAddress(o.BindAddress)
+		if err != nil {
 			cancel()
+
 			return nil, err
 		}
 	}
+
 	if o.NetworkLatency != 0 {
-		if err := server.SetNetworkLatency(o.NetworkLatency); err != nil {
+		err := server.SetNetworkLatency(o.NetworkLatency)
+		if err != nil {
 			cancel()
+
 			return nil, err
 		}
 	}
+
 	if o.FailureDomain != 0 {
-		if err := server.SetFailureDomain(o.FailureDomain); err != nil {
+		err := server.SetFailureDomain(o.FailureDomain)
+		if err != nil {
 			cancel()
+
 			return nil, err
 		}
 	}
+
 	if o.SnapshotParams.Threshold != 0 || o.SnapshotParams.Trailing != 0 {
-		if err := server.SetSnapshotParams(o.SnapshotParams); err != nil {
+		err := server.SetSnapshotParams(o.SnapshotParams)
+		if err != nil {
 			cancel()
+
 			return nil, err
 		}
 	}
-	if err := server.SetAutoRecovery(o.AutoRecovery); err != nil {
+
+	err = server.SetAutoRecovery(o.AutoRecovery)
+	if err != nil {
 		cancel()
+
 		return nil, err
 	}
 
@@ -157,7 +175,7 @@ func (s *Node) Start() error {
 
 // Recover a node by forcing a new cluster configuration.
 //
-// DEPRECATED: Use ReconfigureMembership instead, which does not require
+// Deprecated: Use ReconfigureMembership instead, which does not require
 // instantiating a new Node object.
 func (s *Node) Recover(cluster []NodeInfo) error {
 	return s.server.Recover(cluster)
@@ -178,7 +196,8 @@ type options struct {
 func (s *Node) Close() error {
 	s.cancel()
 	// Send a stop signal to the cowsql event loop.
-	if err := s.server.Stop(); err != nil {
+	err := s.server.Stop()
+	if err != nil {
 		return fmt.Errorf("server failed to stop: %w", err)
 	}
 
@@ -208,6 +227,7 @@ func ReconfigureMembership(dir string, cluster []NodeInfo) error {
 		return err
 	}
 	defer server.Close()
+
 	return server.Recover(cluster)
 }
 
@@ -216,7 +236,7 @@ func ReconfigureMembership(dir string, cluster []NodeInfo) error {
 //
 // It forces appending a new configuration to the raft log stored in the given
 // directory, effectively replacing the current configuration.
-// In comparision with ReconfigureMembership, this function takes the node role
+// In comparison with ReconfigureMembership, this function takes the node role
 // into account and makes use of a cowsql API that supports extending the
 // NodeInfo struct.
 func ReconfigureMembershipExt(dir string, cluster []NodeInfo) error {
@@ -225,6 +245,7 @@ func ReconfigureMembershipExt(dir string, cluster []NodeInfo) error {
 		return err
 	}
 	defer server.Close()
+
 	return server.RecoverExt(cluster)
 }
 

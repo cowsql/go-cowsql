@@ -31,6 +31,7 @@ var (
 
 func requireNotNil(t *testing.T, x any) {
 	t.Helper()
+
 	if x == nil {
 		t.Fatal()
 	}
@@ -38,6 +39,7 @@ func requireNotNil(t *testing.T, x any) {
 
 func assertTrue(t *testing.T, ok bool) {
 	t.Helper()
+
 	if !ok {
 		t.Fatal(ok)
 	}
@@ -45,6 +47,7 @@ func assertTrue(t *testing.T, ok bool) {
 
 func assertNoError(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +55,7 @@ func assertNoError(t *testing.T, err error) {
 
 func assertEqual(t *testing.T, expected, actual any) {
 	t.Helper()
+
 	if expected == nil || actual == nil {
 		if expected != actual {
 			t.Fatal(expected, actual)
@@ -65,6 +69,7 @@ func assertEqual(t *testing.T, expected, actual any) {
 
 func assertNotEqual(t *testing.T, expected, actual any) {
 	t.Helper()
+
 	if expected == nil || actual == nil {
 		if expected == actual {
 			t.Fatal(expected, actual)
@@ -79,7 +84,7 @@ func assertNotEqual(t *testing.T, expected, actual any) {
 // Create a pristine bootstrap node with default value.
 func TestNew_PristineDefault(t *testing.T) {
 	_, cleanup := newApp(t, app.WithAddress("127.0.0.1:9000"))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 }
 
 // Create a pristine joining node.
@@ -88,16 +93,17 @@ func TestNew_PristineJoiner(t *testing.T) {
 	addr2 := "127.0.0.1:9002"
 
 	app1, cleanup := newApp(t, app.WithAddress(addr1))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	app2, cleanup := newApp(t, app.WithAddress(addr2), app.WithCluster([]string{addr1}))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	requireNoError(t, app2.Ready(context.Background()))
 
 	// The joining node to appear in the cluster list.
 	cli, err := app1.Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -116,19 +122,19 @@ func TestNew_JoinerRestart(t *testing.T) {
 	addr2 := "127.0.0.1:9002"
 
 	app1, cleanup := newApp(t, app.WithAddress(addr1))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	requireNoError(t, app1.Ready(context.Background()))
 
 	dir2, cleanup := newDir(t)
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	app2, cleanup := newAppWithDir(t, dir2, app.WithAddress(addr2), app.WithCluster([]string{addr1}))
 	requireNoError(t, app2.Ready(context.Background()))
 	cleanup()
 
 	app2, cleanup = newAppWithDir(t, dir2, app.WithAddress(addr2))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	requireNoError(t, app2.Ready(context.Background()))
 }
@@ -140,20 +146,21 @@ func TestNew_SecondJoiner(t *testing.T) {
 	addr3 := "127.0.0.1:9003"
 
 	app1, cleanup := newApp(t, app.WithAddress(addr1))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	app2, cleanup := newApp(t, app.WithAddress(addr2), app.WithCluster([]string{addr1}))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	requireNoError(t, app2.Ready(context.Background()))
 
 	app3, cleanup := newApp(t, app.WithAddress(addr3), app.WithCluster([]string{addr1}))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	requireNoError(t, app3.Ready(context.Background()))
 
 	cli, err := app1.Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -174,22 +181,23 @@ func TestNew_ThirdJoiner(t *testing.T) {
 
 	for i := range 4 {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
 			options = append(options, app.WithCluster([]string{"127.0.0.1:9001"}))
 		}
 
 		app, cleanup := newApp(t, options...)
-		defer cleanup()
+		defer cleanup() //nolint:revive
 
 		requireNoError(t, app.Ready(context.Background()))
 
 		apps = append(apps, app)
-
 	}
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -207,22 +215,23 @@ func TestNew_FourthJoiner(t *testing.T) {
 
 	for i := range 5 {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
 			options = append(options, app.WithCluster([]string{"127.0.0.1:9001"}))
 		}
 
 		app, cleanup := newApp(t, options...)
-		defer cleanup()
+		defer cleanup() //nolint:revive
 
 		requireNoError(t, app.Ready(context.Background()))
 
 		apps = append(apps, app)
-
 	}
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -241,22 +250,23 @@ func TestNew_FifthJoiner(t *testing.T) {
 
 	for i := range 6 {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
 			options = append(options, app.WithCluster([]string{"127.0.0.1:9001"}))
 		}
 
 		app, cleanup := newApp(t, options...)
-		defer cleanup()
+		defer cleanup() //nolint:revive
 
 		requireNoError(t, app.Ready(context.Background()))
 
 		apps = append(apps, app)
-
 	}
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -276,22 +286,23 @@ func TestNew_SixthJoiner(t *testing.T) {
 
 	for i := range 7 {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
 			options = append(options, app.WithCluster([]string{"127.0.0.1:9001"}))
 		}
 
 		app, cleanup := newApp(t, options...)
-		defer cleanup()
+		defer cleanup() //nolint:revive
 
 		requireNoError(t, app.Ready(context.Background()))
 
 		apps = append(apps, app)
-
 	}
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -313,13 +324,14 @@ func TestHandover_Voter(t *testing.T) {
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
 			options = append(options, app.WithCluster([]string{"127.0.0.1:9001"}))
 		}
 
 		app, cleanup := newApp(t, options...)
-		defer cleanup()
+		defer cleanup() //nolint:revive
 
 		requireNoError(t, app.Ready(context.Background()))
 
@@ -328,6 +340,7 @@ func TestHandover_Voter(t *testing.T) {
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -350,20 +363,21 @@ func TestHandover_Voter(t *testing.T) {
 }
 
 // In a two-node cluster only one of them is a voter. When Handover() is called
-// on the voter, the role and leadership are transfered.
+// on the voter, the role and leadership are transferred.
 func TestHandover_TwoNodes(t *testing.T) {
 	n := 2
 	apps := make([]*app.App, n)
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
 			options = append(options, app.WithCluster([]string{"127.0.0.1:9001"}))
 		}
 
 		app, cleanup := newApp(t, options...)
-		defer cleanup()
+		defer cleanup() //nolint:revive
 
 		requireNoError(t, app.Ready(context.Background()))
 
@@ -375,6 +389,7 @@ func TestHandover_TwoNodes(t *testing.T) {
 
 	cli, err := apps[1].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -392,6 +407,7 @@ func TestHandover_VoterHonorFailureDomain(t *testing.T) {
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{
 			app.WithAddress(addr),
 			app.WithFailureDomain(uint64(i % 3)),
@@ -401,7 +417,7 @@ func TestHandover_VoterHonorFailureDomain(t *testing.T) {
 		}
 
 		app, cleanup := newApp(t, options...)
-		defer cleanup()
+		defer cleanup() //nolint:revive
 
 		requireNoError(t, app.Ready(context.Background()))
 
@@ -410,14 +426,15 @@ func TestHandover_VoterHonorFailureDomain(t *testing.T) {
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
-	cluster, err := cli.Cluster(context.Background())
+	_, err = cli.Cluster(context.Background())
 	requireNoError(t, err)
 
 	requireNoError(t, apps[2].Handover(context.Background()))
 
-	cluster, err = cli.Cluster(context.Background())
+	cluster, err := cli.Cluster(context.Background())
 	requireNoError(t, err)
 
 	assertEqual(t, client.Voter, cluster[0].Role)
@@ -431,7 +448,7 @@ func TestHandover_VoterHonorFailureDomain(t *testing.T) {
 // Handover with a sinle node.
 func TestHandover_SingleNode(t *testing.T) {
 	dir, cleanup := newDir(t)
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	app, err := app.New(dir, app.WithAddress("127.0.0.1:9001"))
 	requireNoError(t, err)
@@ -449,9 +466,10 @@ func TestHandover_GracefulShutdown(t *testing.T) {
 
 	for i := range n {
 		dir, cleanup := newDir(t)
-		defer cleanup()
+		defer cleanup() //nolint:revive
 
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{
 			app.WithAddress(addr),
 		}
@@ -470,7 +488,7 @@ func TestHandover_GracefulShutdown(t *testing.T) {
 	db, err := sql.Open(apps[0].Driver(), "test.db")
 	requireNoError(t, err)
 
-	_, err = db.Exec("CREATE TABLE test (n INT)")
+	_, err = db.ExecContext(t.Context(), "CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
 	requireNoError(t, db.Close())
@@ -492,13 +510,14 @@ func TestHandover_StandBy(t *testing.T) {
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
 			options = append(options, app.WithCluster([]string{"127.0.0.1:9001"}))
 		}
 
 		app, cleanup := newApp(t, options...)
-		defer cleanup()
+		defer cleanup() //nolint:revive
 
 		requireNoError(t, app.Ready(context.Background()))
 
@@ -507,6 +526,7 @@ func TestHandover_StandBy(t *testing.T) {
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -541,13 +561,14 @@ func TestHandover_TransferLeadership(t *testing.T) {
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{app.WithAddress(addr)}
 		if i > 0 {
 			options = append(options, app.WithCluster([]string{"127.0.0.1:9001"}))
 		}
 
 		app, cleanup := newApp(t, options...)
-		defer cleanup()
+		defer cleanup() //nolint:revive
 
 		requireNoError(t, app.Ready(context.Background()))
 
@@ -556,6 +577,7 @@ func TestHandover_TransferLeadership(t *testing.T) {
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	leader, err := cli.Leader(context.Background())
@@ -567,6 +589,7 @@ func TestHandover_TransferLeadership(t *testing.T) {
 
 	cli, err = apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	leader, err = cli.Leader(context.Background())
@@ -591,6 +614,7 @@ func TestRolesAdjustment_ReplaceVoter(t *testing.T) {
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{
 			app.WithAddress(addr),
 			app.WithRolesAdjustmentFrequency(2 * time.Second),
@@ -618,6 +642,7 @@ func TestRolesAdjustment_ReplaceVoter(t *testing.T) {
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -639,6 +664,7 @@ func TestRolesAdjustment_ReplaceVoterHonorFailureDomain(t *testing.T) {
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{
 			app.WithAddress(addr),
 			app.WithRolesAdjustmentFrequency(4 * time.Second),
@@ -669,6 +695,7 @@ func TestRolesAdjustment_ReplaceVoterHonorFailureDomain(t *testing.T) {
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -692,6 +719,7 @@ func TestRolesAdjustment_ReplaceVoterHonorWeight(t *testing.T) {
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{
 			app.WithAddress(addr),
 			app.WithRolesAdjustmentFrequency(4 * time.Second),
@@ -719,16 +747,19 @@ func TestRolesAdjustment_ReplaceVoterHonorWeight(t *testing.T) {
 
 	cli, err := apps[3].Client(context.Background())
 	requireNoError(t, err)
+
 	requireNoError(t, cli.Weight(context.Background(), uint64(15)))
 	defer cli.Close()
 
 	cli, err = apps[4].Client(context.Background())
 	requireNoError(t, err)
+
 	requireNoError(t, cli.Weight(context.Background(), uint64(5)))
 	defer cli.Close()
 
 	cli, err = apps[5].Client(context.Background())
 	requireNoError(t, err)
+
 	requireNoError(t, cli.Weight(context.Background(), uint64(10)))
 	defer cli.Close()
 
@@ -736,6 +767,7 @@ func TestRolesAdjustment_ReplaceVoterHonorWeight(t *testing.T) {
 
 	cli, err = apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -759,6 +791,7 @@ func TestRolesAdjustment_CantReplaceVoter(t *testing.T) {
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{
 			app.WithAddress(addr),
 			app.WithRolesAdjustmentFrequency(4 * time.Second),
@@ -786,6 +819,7 @@ func TestRolesAdjustment_CantReplaceVoter(t *testing.T) {
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -805,6 +839,7 @@ func TestRolesAdjustment_ReplaceStandBy(t *testing.T) {
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{
 			app.WithAddress(addr),
 			app.WithRolesAdjustmentFrequency(5 * time.Second),
@@ -835,6 +870,7 @@ func TestRolesAdjustment_ReplaceStandBy(t *testing.T) {
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -859,6 +895,7 @@ func TestRolesAdjustment_ReplaceStandByHonorFailureDomains(t *testing.T) {
 
 	for i := range n {
 		addr := fmt.Sprintf("127.0.0.1:900%d", i+1)
+
 		options := []app.Option{
 			app.WithAddress(addr),
 			app.WithRolesAdjustmentFrequency(5 * time.Second),
@@ -892,6 +929,7 @@ func TestRolesAdjustment_ReplaceStandByHonorFailureDomains(t *testing.T) {
 
 	cli, err := apps[0].Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	cluster, err := cli.Cluster(context.Background())
@@ -912,17 +950,18 @@ func TestRolesAdjustment_ReplaceStandByHonorFailureDomains(t *testing.T) {
 // Open a database on a fresh one-node cluster.
 func TestOpen(t *testing.T) {
 	app, cleanup := newApp(t, app.WithAddress("127.0.0.1:9000"))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	db, err := app.Open(context.Background(), "test")
 	requireNoError(t, err)
+
 	defer db.Close()
 
 	_, err = db.ExecContext(context.Background(), "CREATE TABLE foo(n INT)")
 	assertNoError(t, err)
 }
 
-// Test some setup options
+// Test some setup options.
 func TestOptions(t *testing.T) {
 	options := []app.Option{
 		app.WithAddress("127.0.0.1:9000"),
@@ -930,8 +969,10 @@ func TestOptions(t *testing.T) {
 		app.WithSnapshotParams(cowsql.SnapshotParams{Threshold: 1024, Trailing: 1024}),
 		app.WithTracing(client.LogDebug),
 	}
+
 	app, cleanup := newApp(t, options...)
-	defer cleanup()
+	defer cleanup() //nolint:revive
+
 	requireNotNil(t, app)
 }
 
@@ -941,7 +982,7 @@ func TestProxy_Error(t *testing.T) {
 	dial := client.DialFuncWithTLS(client.DefaultDialFunc, app.SimpleDialTLSConfig(cert, pool))
 
 	_, cleanup := newApp(t, app.WithAddress("127.0.0.1:9000"))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	// Simulate a client which writes the protocol header, then a Leader
 	// request and finally drops before reading the response.
@@ -971,7 +1012,7 @@ func TestProxy_Error(t *testing.T) {
 	assertEqual(t, n, 8)
 
 	time.Sleep(100 * time.Millisecond)
-	conn.Close()
+	requireNoError(t, conn.Close())
 	time.Sleep(250 * time.Millisecond)
 }
 
@@ -979,7 +1020,7 @@ func TestProxy_Error(t *testing.T) {
 // error is returned.
 func TestReady_Cancel(t *testing.T) {
 	app, cleanup := newApp(t, app.WithAddress("127.0.0.1:9002"), app.WithCluster([]string{"127.0.0.1:9001"}))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -1017,7 +1058,9 @@ func TestExternalConnWithTCP(t *testing.T) {
 	hijackStatus := "101 Switching Protocols"
 
 	dialFunc := func(ctx context.Context, addr string) (net.Conn, error) {
-		conn, err := net.Dial("tcp", addr)
+		var d net.Dialer
+
+		conn, err := d.DialContext(ctx, "tcp", addr)
 		requireNoError(t, err)
 
 		request := &http.Request{}
@@ -1025,7 +1068,10 @@ func TestExternalConnWithTCP(t *testing.T) {
 		requireNoError(t, err)
 
 		requireNoError(t, request.Write(conn))
+
 		resp, err := http.ReadResponse(bufio.NewReader(conn), request)
+		defer requireNoError(t, resp.Body.Close())
+
 		requireNoError(t, err)
 		requireEqual(t, hijackStatus, resp.Status)
 
@@ -1045,26 +1091,27 @@ func TestExternalConnWithTCP(t *testing.T) {
 	}
 
 	// Start up three listeners.
-	go http.ListenAndServe(externalAddr1, newHandler(acceptCh1))
-	go http.ListenAndServe(externalAddr2, newHandler(acceptCh2))
-	go http.ListenAndServe(externalAddr3, newHandler(acceptCh3))
+	go func() { _ = http.ListenAndServe(externalAddr1, newHandler(acceptCh1)) }() //nolint:gosec
+	go func() { _ = http.ListenAndServe(externalAddr2, newHandler(acceptCh2)) }() //nolint:gosec
+	go func() { _ = http.ListenAndServe(externalAddr3, newHandler(acceptCh3)) }() //nolint:gosec
 
 	app1, cleanup := newAppWithNoTLS(t, app.WithAddress(externalAddr1), app.WithExternalConn(dialFunc, acceptCh1))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	app2, cleanup := newAppWithNoTLS(t, app.WithAddress(externalAddr2), app.WithExternalConn(dialFunc, acceptCh2), app.WithCluster([]string{externalAddr1}))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	requireNoError(t, app2.Ready(context.Background()))
 
 	app3, cleanup := newAppWithNoTLS(t, app.WithAddress(externalAddr3), app.WithExternalConn(dialFunc, acceptCh3), app.WithCluster([]string{externalAddr1}))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	requireNoError(t, app3.Ready(context.Background()))
 
 	// Get a client from the first node (likely the leader).
 	cli, err := app1.Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	// Ensure entries exist for each cluster member.
@@ -1106,21 +1153,22 @@ func TestExternalConnWithPipe(t *testing.T) {
 	}
 
 	app1, cleanup := newAppWithNoTLS(t, app.WithAddress(externalAddr1), app.WithExternalConn(dialFunc, acceptCh1))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	app2, cleanup := newAppWithNoTLS(t, app.WithAddress(externalAddr2), app.WithExternalConn(dialFunc, acceptCh2), app.WithCluster([]string{externalAddr1}))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	requireNoError(t, app2.Ready(context.Background()))
 
 	app3, cleanup := newAppWithNoTLS(t, app.WithAddress(externalAddr3), app.WithExternalConn(dialFunc, acceptCh3), app.WithCluster([]string{externalAddr1}))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	requireNoError(t, app3.Ready(context.Background()))
 
 	// Get a client from the first node (likely the leader).
 	cli, err := app1.Leader(context.Background())
 	requireNoError(t, err)
+
 	defer cli.Close()
 
 	// Ensure entries exist for each cluster member.
@@ -1138,8 +1186,8 @@ func TestExternalConnWithPipe(t *testing.T) {
 
 func TestParallelNewApp(t *testing.T) {
 	t.Parallel()
+
 	for i := range 100 {
-		i := i
 		t.Run(fmt.Sprintf("run-%d", i), func(tt *testing.T) {
 			tt.Parallel()
 			// TODO: switch this to tt.TempDir when we switch to
@@ -1149,6 +1197,7 @@ func TestParallelNewApp(t *testing.T) {
 				app.WithAddress(fmt.Sprintf("127.0.0.1:%d", 10200+i)),
 			)
 			requireNoError(tt, err)
+
 			defer func() {
 				_ = dqApp.Close()
 				_ = os.RemoveAll(tmpDir)
@@ -1233,25 +1282,24 @@ var appIndex int
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := os.MkdirTemp("", "cowsql-app-test-")
+	dir, err := os.MkdirTemp("", "cowsql-app-test-") //nolint:usetesting
 	assertNoError(t, err)
 
-	cleanup := func() {
-		os.RemoveAll(dir)
-	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
 
 	return dir, cleanup
 }
 
 func Test_TxRowsAffected(t *testing.T) {
 	app, cleanup := newAppWithNoTLS(t, app.WithAddress("127.0.0.1:9001"))
-	defer cleanup()
+	defer cleanup() //nolint:revive
 
 	err := app.Ready(context.Background())
 	requireNoError(t, err)
 
 	db, err := app.Open(context.Background(), "test")
 	requireNoError(t, err)
+
 	defer db.Close()
 
 	_, err = db.ExecContext(context.Background(), `
@@ -1269,14 +1317,17 @@ INSERT INTO test
 VALUES
 	('id0', -1);
 	`
+
 		result, err := tx.ExecContext(ctx, query)
 		if err != nil {
 			return err
 		}
+
 		_, err = result.RowsAffected()
 		if err != nil {
 			return err
 		}
+
 		return nil
 	})
 	requireNoError(t, err)
@@ -1289,17 +1340,21 @@ SET
 	value = 1
 WHERE id = 'id0';
 	`
+
 		result, err := tx.ExecContext(ctx, query)
 		if err != nil {
 			return err
 		}
+
 		affected, err := result.RowsAffected()
 		if err != nil {
 			return err
 		}
+
 		if affected != 1 {
 			return fmt.Errorf("expected 1 row affected, got %d", affected)
 		}
+
 		return nil
 	})
 	requireNoError(t, err)
@@ -1311,8 +1366,10 @@ func tx(ctx context.Context, db *sql.DB, fn func(context.Context, *sql.Tx) error
 		return err
 	}
 
-	if err := fn(ctx, tx); err != nil {
+	err = fn(ctx, tx)
+	if err != nil {
 		_ = tx.Rollback()
+
 		return err
 	}
 

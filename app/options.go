@@ -140,9 +140,9 @@ func WithRolesAdjustmentFrequency(frequency time.Duration) Option {
 }
 
 // WithLogFunc sets a custom log function.
-func WithLogFunc(log client.LogFunc) Option {
+func WithLogFunc(l client.LogFunc) Option {
 	return func(options *options) {
-		options.Log = log
+		options.Log = l
 	}
 }
 
@@ -259,30 +259,35 @@ func defaultAddress() (addr string, err error) {
 	if err != nil {
 		return "", err
 	}
+
 	for _, iface := range ifaces {
 		if isLoopback(&iface) {
 			continue
 		}
+
 		addrs, err := iface.Addrs()
 		if err != nil {
 			continue
 		}
+
 		if len(addrs) == 0 {
 			continue
 		}
+
 		addr, ok := addrs[0].(*net.IPNet)
 		if !ok {
 			continue
 		}
+
 		ipStr := addr.IP.String()
 		if isIpV4(ipStr) {
 			return addr.IP.String() + ":9000", nil
-		} else {
-			return "[" + addr.IP.String() + "]" + ":9000", nil
 		}
+
+		return "[" + addr.IP.String() + "]" + ":9000", nil
 	}
 
-	return "", fmt.Errorf("no suitable net.Interface found: %v", err)
+	return "", fmt.Errorf("no suitable net.Interface found: %w", err)
 }
 
 func defaultLogFunc(l client.LogLevel, format string, a ...any) {
@@ -290,6 +295,7 @@ func defaultLogFunc(l client.LogLevel, format string, a ...any) {
 	if l != client.LogError {
 		return
 	}
+
 	msg := fmt.Sprintf("["+l.String()+"]"+" cowsql: "+format, a...)
 	log.Print(msg)
 }

@@ -11,6 +11,7 @@ import (
 func durToMs(d time.Duration) string {
 	ms := int64(d / time.Millisecond)
 	rest := int64(d % time.Millisecond)
+
 	return fmt.Sprintf("%d.%06d", ms, rest)
 }
 
@@ -75,6 +76,7 @@ func (r report) String() string {
 func (t *tracker) measure(start time.Time, work work, err *error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
+
 	duration := time.Since(start)
 	if *err == nil {
 		m := measurement{start, duration}
@@ -88,7 +90,9 @@ func (t *tracker) measure(start time.Time, work work, err *error) {
 func (t *tracker) report() map[work]report {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
+
 	reports := make(map[work]report)
+
 	for w := range t.measurements {
 		report := report{
 			n:             len(t.measurements[w]),
@@ -106,6 +110,7 @@ func (t *tracker) report() map[work]report {
 			if m.duration < report.minDuration {
 				report.minDuration = m.duration
 			}
+
 			if m.duration > report.maxDuration {
 				report.maxDuration = m.duration
 			}
@@ -114,6 +119,7 @@ func (t *tracker) report() map[work]report {
 		if report.n > 0 {
 			report.avgDuration = report.totalDuration / time.Duration(report.n)
 		}
+
 		reports[w] = report
 	}
 

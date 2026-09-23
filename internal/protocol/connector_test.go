@@ -15,6 +15,7 @@ import (
 
 func requireNotNil(t *testing.T, o any) {
 	t.Helper()
+
 	if o == nil {
 		t.Fatal("is nil")
 	}
@@ -22,6 +23,7 @@ func requireNotNil(t *testing.T, o any) {
 
 func assertNoError(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,6 +31,7 @@ func assertNoError(t *testing.T, err error) {
 
 func assertTrue(t *testing.T, ok bool) {
 	t.Helper()
+
 	if !ok {
 		t.Fatal(ok)
 	}
@@ -132,7 +135,9 @@ func TestConnector_ContextCanceled(t *testing.T) {
 // Simulate a server which accepts the connection but doesn't reply within the
 // attempt timeout.
 func TestConnector_AttemptTimeout(t *testing.T) {
-	listener, err := net.Listen("unix", "@1234")
+	var lc net.ListenConfig
+
+	listener, err := lc.Listen(t.Context(), "unix", "@1234")
 	requireNoError(t, err)
 
 	store := newStore(t, []string{listener.Addr().String()})
@@ -141,12 +146,14 @@ func TestConnector_AttemptTimeout(t *testing.T) {
 		RetryLimit:     1,
 	}
 	connector := protocol.NewConnector(0, store, config, logging.Test(t))
+
 	var conn net.Conn
 	go func() {
 		conn, err = listener.Accept()
 		requireNoError(t, err)
 		requireNotNil(t, conn)
 	}()
+
 	defer func() {
 		if conn != nil {
 			_ = conn.Close()
@@ -313,6 +320,8 @@ func TestConnector_AttemptTimeout(t *testing.T) {
 // collecting them into a slice. The second function returned can be used to
 // assert that the collected messages match the given ones.
 func newLogFunc(t *testing.T) (logging.Func, func([]string)) {
+	t.Helper()
+
 	messages := []string{}
 	log := func(l logging.Level, format string, a ...any) {
 		message := l.String() + ": " + fmt.Sprintf(format, a...)
@@ -322,6 +331,7 @@ func newLogFunc(t *testing.T) (logging.Func, func([]string)) {
 	check := func(expected []string) {
 		assertEqual(t, expected, messages)
 	}
+
 	return log, check
 }
 
@@ -344,7 +354,7 @@ func newStore(t *testing.T, addresses []string) protocol.NodeStore {
 func newNode(t *testing.T, index int) (string, func()) {
 	t.Helper()
 
-	id := uint64(index + 1)
+	id := uint64(index + 1) //nolint:gosec
 	dir, dirCleanup := newDir(t)
 
 	address := fmt.Sprintf("@test-%d", index)
@@ -356,6 +366,7 @@ func newNode(t *testing.T, index int) (string, func()) {
 	requireNoError(t, err)
 
 	requireNoError(t, server.Start())
+
 	cleanup := func() {
 		requireNoError(t, server.Stop())
 		server.Close()
@@ -369,7 +380,7 @@ func newNode(t *testing.T, index int) (string, func()) {
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := os.MkdirTemp("", "cowsql-connector-test-")
+	dir, err := os.MkdirTemp("", "cowsql-connector-test-") //nolint:usetesting
 	assertNoError(t, err)
 
 	cleanup := func() {

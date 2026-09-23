@@ -15,24 +15,27 @@ func makeNodeDialFunc(appCtx context.Context, config *tls.Config) client.DialFun
 	dial := func(ctx context.Context, addr string) (net.Conn, error) {
 		clonedConfig := config.Clone()
 		if len(clonedConfig.ServerName) == 0 {
-
 			remoteIP, _, err := net.SplitHostPort(addr)
 			if err != nil {
 				return nil, err
 			}
+
 			clonedConfig.ServerName = remoteIP
 		}
+
 		dialer := &net.Dialer{}
+
 		conn, err := dialer.DialContext(ctx, "tcp", addr)
 		if err != nil {
 			return nil, err
 		}
+
 		goUnix, cUnix, err := socketpair()
 		if err != nil {
 			return nil, fmt.Errorf("create pair of Unix sockets: %w", err)
 		}
 
-		go proxy(appCtx, conn, goUnix, clonedConfig)
+		go func() { _ = proxy(appCtx, conn, goUnix, clonedConfig) }()
 
 		return cUnix, nil
 	}
@@ -54,7 +57,7 @@ func extDialFuncWithProxy(appCtx context.Context, dialFunc client.DialFunc) clie
 			return nil, err
 		}
 
-		go proxy(appCtx, conn, goUnix, nil)
+		go func() { _ = proxy(appCtx, conn, goUnix, nil) }()
 
 		return cUnix, nil
 	}

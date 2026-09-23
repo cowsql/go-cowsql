@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,8 +35,7 @@ func New(database string, store client.NodeStore, options ...Option) (*Shell, er
 	}
 
 	switch o.Format {
-	case formatTabular:
-	case formatJson:
+	case formatTabular, formatJson:
 	default:
 		return nil, fmt.Errorf("unknown format %s", o.Format)
 	}
@@ -44,6 +44,7 @@ func New(database string, store client.NodeStore, options ...Option) (*Shell, er
 	if err != nil {
 		return nil, err
 	}
+
 	sql.Register(o.DriverName, driver)
 
 	db, err := sql.Open(o.DriverName, database)
@@ -71,21 +72,27 @@ func (s *Shell) Process(ctx context.Context, line string) (string, error) {
 	case ".help":
 		return s.processHelp(), nil
 	}
+
 	if strings.HasPrefix(strings.ToLower(strings.TrimLeft(line, " ")), ".remove") {
 		return s.processRemove(ctx, line)
 	}
+
 	if strings.HasPrefix(strings.ToLower(strings.TrimLeft(line, " ")), ".describe") {
 		return s.processDescribe(ctx, line)
 	}
+
 	if strings.HasPrefix(strings.ToLower(strings.TrimLeft(line, " ")), ".weight") {
 		return s.processWeight(ctx, line)
 	}
+
 	if strings.HasPrefix(strings.ToLower(strings.TrimLeft(line, " ")), ".dump") {
 		return s.processDump(ctx, line)
 	}
+
 	if strings.HasPrefix(strings.ToLower(strings.TrimLeft(line, " ")), ".reconfigure") {
 		return s.processReconfigure(ctx, line)
 	}
+
 	return s.processQuery(ctx, line)
 }
 
@@ -109,26 +116,40 @@ func (s *Shell) processCluster(ctx context.Context, line string) (string, error)
 	if err != nil {
 		return "", err
 	}
+
 	cluster, err := cli.Cluster(ctx)
 	if err != nil {
 		return "", err
 	}
+
 	result := ""
+
 	switch s.format {
 	case formatTabular:
+		var resultSb119 strings.Builder
+
 		for i, server := range cluster {
 			if i > 0 {
-				result += "\n"
+				resultSb119.WriteString("\n")
 			}
-			result += fmt.Sprintf("%x|%s|%s", server.ID, server.Address, server.Role)
+
+			fmt.Fprintf(&resultSb119, "%x|%s|%s", server.ID, server.Address, server.Role)
 		}
+
+		result += resultSb119.String()
 	case formatJson:
 		data, err := json.Marshal(cluster)
 		if err != nil {
 			return "", err
 		}
+
 		var indented bytes.Buffer
-		json.Indent(&indented, data, "", "\t")
+
+		err = json.Indent(&indented, data, "", "\t")
+		if err != nil {
+			return "", err
+		}
+
 		result = indented.String()
 	}
 
@@ -140,37 +161,47 @@ func (s *Shell) processLeader(ctx context.Context, _ string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	leader, err := cli.Leader(ctx)
 	if err != nil {
 		return "", err
 	}
+
 	if leader == nil {
 		return "", nil
 	}
+
 	return leader.Address, nil
 }
 
 func (s *Shell) processRemove(ctx context.Context, line string) (string, error) {
 	parts := strings.Split(line, " ")
 	if len(parts) != 2 {
-		return "", fmt.Errorf("bad command format, should be: .remove <address>")
+		return "", errors.New("bad command format, should be: .remove <address>")
 	}
+
 	address := parts[1]
+
 	cli, err := client.FindLeader(ctx, s.store, client.WithDialFunc(s.dial))
 	if err != nil {
 		return "", err
 	}
+
 	cluster, err := cli.Cluster(ctx)
 	if err != nil {
 		return "", err
 	}
+
 	for _, node := range cluster {
 		if node.Address != address {
 			continue
 		}
-		if err := cli.Remove(ctx, node.ID); err != nil {
+
+		err := cli.Remove(ctx, node.ID)
+		if err != nil {
 			return "", fmt.Errorf("remove node %q: %w", address, err)
 		}
+
 		return "", nil
 	}
 
@@ -180,19 +211,23 @@ func (s *Shell) processRemove(ctx context.Context, line string) (string, error) 
 func (s *Shell) processDescribe(ctx context.Context, line string) (string, error) {
 	parts := strings.Split(line, " ")
 	if len(parts) != 2 {
-		return "", fmt.Errorf("bad command format, should be: .describe <address>")
+		return "", errors.New("bad command format, should be: .describe <address>")
 	}
+
 	address := parts[1]
+
 	cli, err := client.New(ctx, address, client.WithDialFunc(s.dial))
 	if err != nil {
 		return "", err
 	}
+
 	metadata, err := cli.Describe(ctx)
 	if err != nil {
 		return "", err
 	}
 
 	result := ""
+
 	switch s.format {
 	case formatTabular:
 		result += fmt.Sprintf("%s|%d|%d", address, metadata.FailureDomain, metadata.Weight)
@@ -201,8 +236,14 @@ func (s *Shell) processDescribe(ctx context.Context, line string) (string, error
 		if err != nil {
 			return "", err
 		}
+
 		var indented bytes.Buffer
-		json.Indent(&indented, data, "", "\t")
+
+		err = json.Indent(&indented, data, "", "\t")
+		if err != nil {
+			return "", err
+		}
+
 		result = indented.String()
 	}
 
@@ -212,30 +253,34 @@ func (s *Shell) processDescribe(ctx context.Context, line string) (string, error
 func (s *Shell) processDump(ctx context.Context, line string) (string, error) {
 	parts := strings.Split(line, " ")
 	if len(parts) < 2 || len(parts) > 3 {
-		return "NOK", fmt.Errorf("bad command format, should be: .dump <address> [<database>]")
+		return "NOK", errors.New("bad command format, should be: .dump <address> [<database>]")
 	}
+
 	address := parts[1]
+
 	cli, err := client.New(ctx, address, client.WithDialFunc(s.dial))
 	if err != nil {
-		return "NOK", fmt.Errorf("dial failed")
+		return "NOK", errors.New("dial failed")
 	}
 
 	database := "db.bin"
 	if len(parts) == 3 {
 		database = parts[2]
 	}
+
 	files, err := cli.Dump(ctx, database)
 	if err != nil {
-		return "NOK", fmt.Errorf("dump failed")
+		return "NOK", errors.New("dump failed")
 	}
 
 	dir, err := os.Getwd()
 	if err != nil {
-		return "NOK", fmt.Errorf("os.Getwd() failed")
+		return "NOK", errors.New("os.Getwd() failed")
 	}
 
 	for _, file := range files {
 		path := filepath.Join(dir, file.Name)
+
 		err := os.WriteFile(path, file.Data, 0o600)
 		if err != nil {
 			return "NOK", fmt.Errorf("WriteFile failed on path %s", path)
@@ -271,24 +316,26 @@ Help:
   6. Start all the cowsql nodes.
   7. If, for some reason, this fails or gives undesired results, try again with data from another node (you should still have this from step 0).
 `
+
 		return "NOK", shellError(msg)
 	}
+
 	dir := parts[1]
 	clusteryamlpath := parts[2]
 
 	store, err := client.NewYamlNodeStore(clusteryamlpath)
 	if err != nil {
-		return "NOK", fmt.Errorf("failed to create YamlNodeStore from file at %s :%v", clusteryamlpath, err)
+		return "NOK", fmt.Errorf("failed to create YamlNodeStore from file at %s :%w", clusteryamlpath, err)
 	}
 
 	servers, err := store.Get(ctx)
 	if err != nil {
-		return "NOK", fmt.Errorf("failed to retrieve NodeInfo list :%v", err)
+		return "NOK", fmt.Errorf("failed to retrieve NodeInfo list :%w", err)
 	}
 
 	err = cowsql.ReconfigureMembershipExt(dir, servers)
 	if err != nil {
-		return "NOK", fmt.Errorf("failed to reconfigure membership :%v", err)
+		return "NOK", fmt.Errorf("failed to reconfigure membership :%w", err)
 	}
 
 	return "OK", nil
@@ -297,9 +344,11 @@ Help:
 func (s *Shell) processWeight(ctx context.Context, line string) (string, error) {
 	parts := strings.Split(line, " ")
 	if len(parts) != 3 {
-		return "", fmt.Errorf("bad command format, should be: .weight <address> <n>")
+		return "", errors.New("bad command format, should be: .weight <address> <n>")
 	}
+
 	address := parts[1]
+
 	weight, err := strconv.Atoi(parts[2])
 	if err != nil || weight < 0 {
 		return "", fmt.Errorf("bad weight %q", parts[2])
@@ -309,7 +358,9 @@ func (s *Shell) processWeight(ctx context.Context, line string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	if err := cli.Weight(ctx, uint64(weight)); err != nil {
+
+	err = cli.Weight(ctx, uint64(weight))
+	if err != nil {
 		return "", err
 	}
 
@@ -322,12 +373,15 @@ func (s *Shell) processQuery(ctx context.Context, line string) (string, error) {
 		return "", fmt.Errorf("begin transaction: %w", err)
 	}
 
-	rows, err := tx.Query(line)
+	rows, err := tx.QueryContext(ctx, line)
 	if err != nil {
 		err = fmt.Errorf("query: %w", err)
-		if rbErr := tx.Rollback(); rbErr != nil {
-			return "", fmt.Errorf("unable to rollback: %v", err)
+
+		rbErr := tx.Rollback()
+		if rbErr != nil {
+			return "", fmt.Errorf("unable to rollback: %w", err)
 		}
+
 		return "", err
 	}
 	defer rows.Close()
@@ -335,26 +389,36 @@ func (s *Shell) processQuery(ctx context.Context, line string) (string, error) {
 	columns, err := rows.Columns()
 	if err != nil {
 		err = fmt.Errorf("columns: %w", err)
-		if rbErr := tx.Rollback(); rbErr != nil {
-			return "", fmt.Errorf("unable to rollback: %v", err)
+
+		rbErr := tx.Rollback()
+		if rbErr != nil {
+			return "", fmt.Errorf("unable to rollback: %w", err)
 		}
+
 		return "", err
 	}
+
 	n := len(columns)
 
 	var sb strings.Builder
+
 	for rows.Next() {
 		row := make([]any, n)
+
 		rowPointers := make([]any, n)
 		for i := range row {
 			rowPointers[i] = &row[i]
 		}
 
-		if err := rows.Scan(rowPointers...); err != nil {
+		err := rows.Scan(rowPointers...)
+		if err != nil {
 			err = fmt.Errorf("scan: %w", err)
-			if rbErr := tx.Rollback(); rbErr != nil {
-				return "", fmt.Errorf("unable to rollback: %v", err)
+
+			rbErr := tx.Rollback()
+			if rbErr != nil {
+				return "", fmt.Errorf("unable to rollback: %w", err)
 			}
+
 			return "", err
 		}
 
@@ -365,18 +429,24 @@ func (s *Shell) processQuery(ctx context.Context, line string) (string, error) {
 				fmt.Fprintf(&sb, "|%v", column)
 			}
 		}
+
 		sb.WriteByte('\n')
 	}
 
-	if err := rows.Err(); err != nil {
+	err = rows.Err()
+	if err != nil {
 		err = fmt.Errorf("rows: %w", err)
-		if rbErr := tx.Rollback(); rbErr != nil {
-			return "", fmt.Errorf("unable to rollback: %v", err)
+
+		rbErr := tx.Rollback()
+		if rbErr != nil {
+			return "", fmt.Errorf("unable to rollback: %w", err)
 		}
+
 		return "", err
 	}
 
-	if err := tx.Commit(); err != nil {
+	err = tx.Commit()
+	if err != nil {
 		return "", fmt.Errorf("commit: %w", err)
 	}
 

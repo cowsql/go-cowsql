@@ -4,23 +4,27 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/peterh/liner"
+	"github.com/spf13/cobra"
+
 	"github.com/cowsql/go-cowsql/app"
 	"github.com/cowsql/go-cowsql/client"
 	"github.com/cowsql/go-cowsql/internal/shell"
-	"github.com/peterh/liner"
-	"github.com/spf13/cobra"
 )
 
 func main() {
-	var crt string
-	var key string
-	var servers *[]string
-	var format string
+	var (
+		crt     string
+		key     string
+		servers *[]string
+		format  string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "cowsql -s <servers> <database> [command]",
@@ -28,18 +32,24 @@ func main() {
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(*servers) == 0 {
-				return fmt.Errorf("no servers provided")
+				return errors.New("no servers provided")
 			}
-			var store client.NodeStore
-			var err error
+
+			var (
+				store client.NodeStore
+				err   error
+			)
 
 			first := (*servers)[0]
 			if strings.HasPrefix(first, "file://") {
 				if len(*servers) > 1 {
-					return fmt.Errorf("can't mix server store and explicit list")
+					return errors.New("can't mix server store and explicit list")
 				}
+
 				path := first[len("file://"):]
-				if _, err := os.Stat(path); err != nil {
+
+				_, err := os.Stat(path)
+				if err != nil {
 					return fmt.Errorf("open servers store: %w", err)
 				}
 
@@ -52,12 +62,13 @@ func main() {
 				for i, address := range *servers {
 					infos[i].Address = address
 				}
+
 				store = client.NewInmemNodeStore()
-				store.Set(context.Background(), infos)
+				_ = store.Set(context.Background(), infos)
 			}
 
 			if (crt != "" && key == "") || (key != "" && crt == "") {
-				return fmt.Errorf("both TLS certificate and key must be given")
+				return errors.New("both TLS certificate and key must be given")
 			}
 
 			dial := client.DefaultDialFunc
@@ -75,12 +86,11 @@ func main() {
 
 				pool := x509.NewCertPool()
 				if !pool.AppendCertsFromPEM(data) {
-					return fmt.Errorf("bad certificate")
+					return errors.New("bad certificate")
 				}
 
 				config := app.SimpleDialTLSConfig(cert, pool)
 				dial = client.DialFuncWithTLS(dial, config)
-
 			}
 
 			sh, err := shell.New(args[0], store, shell.WithDialFunc(dial), shell.WithFormat(format))
@@ -89,14 +99,15 @@ func main() {
 			}
 
 			if len(args) > 1 {
-				for _, input := range strings.Split(args[1], ";") {
+				for input := range strings.SplitSeq(args[1], ";") {
 					result, err := sh.Process(context.Background(), input)
 					if err != nil {
 						return err
 					} else if result != "" {
-						fmt.Println(result)
+						fmt.Println(result) //nolint:forbidigo
 					}
 				}
+
 				return nil
 			}
 
@@ -106,19 +117,21 @@ func main() {
 			for {
 				input, err := line.Prompt("cowsql> ")
 				if err != nil {
-					if err == io.EOF {
+					if errors.Is(err, io.EOF) {
 						break
 					}
+
 					return err
 				}
 
 				result, err := sh.Process(context.Background(), input)
 				if err != nil {
-					fmt.Println("Error: ", err)
+					fmt.Println("Error: ", err) //nolint:forbidigo
 				} else {
 					line.AppendHistory(input)
+
 					if result != "" {
-						fmt.Println(result)
+						fmt.Println(result) //nolint:forbidigo
 					}
 				}
 			}
@@ -133,9 +146,13 @@ func main() {
 	flags.StringVarP(&key, "key", "k", "", "private TLS key")
 	flags.StringVarP(&format, "format", "f", "tabular", "output format (tabular, json)")
 
-	cmd.MarkFlagRequired("servers")
+	err := cmd.MarkFlagRequired("servers")
+	if err != nil {
+		os.Exit(1)
+	}
 
-	if err := cmd.Execute(); err != nil {
+	err = cmd.Execute()
+	if err != nil {
 		os.Exit(1)
 	}
 }

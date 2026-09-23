@@ -1,9 +1,9 @@
 //go:build !nosqlite3
-// +build !nosqlite3
 
 package cowsql
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -28,12 +28,16 @@ import (
 // environment variable to 1 at process startup, in order to prevent go-cowsql
 // from setting Single-thread mode at all.
 func ConfigMultiThread() error {
-	if err := bindings.ConfigMultiThread(); err != nil {
-		if err, ok := err.(protocol.Error); ok && err.Code == 21 /* SQLITE_MISUSE */ {
-			return fmt.Errorf("SQLite is already initialized")
+	err := bindings.ConfigMultiThread()
+	if err != nil {
+		var err protocol.Error
+		if errors.As(err, &err) {
+			return errors.New("SQLite is already initialized")
 		}
+
 		return fmt.Errorf("unknow error: %w", err)
 	}
+
 	return nil
 }
 
@@ -43,6 +47,7 @@ func init() {
 	if os.Getenv("GO_COWSQL_MULTITHREAD") == "1" {
 		return
 	}
+
 	err := bindings.ConfigSingleThread()
 	if err != nil {
 		panic(fmt.Errorf("set single thread mode: %w", err))

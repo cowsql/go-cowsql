@@ -1,8 +1,8 @@
 package protocol
 
 import (
-	"fmt"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 	"unsafe"
@@ -10,6 +10,7 @@ import (
 
 func assertEqual(t *testing.T, expected, actual any) {
 	t.Helper()
+
 	if expected == nil || actual == nil {
 		if expected != actual {
 			t.Fatal(expected, actual)
@@ -23,6 +24,7 @@ func assertEqual(t *testing.T, expected, actual any) {
 
 func requireNoError(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +33,7 @@ func requireNoError(t *testing.T, err error) {
 func TestMessage_StaticBytesAlignment(t *testing.T) {
 	message := Message{}
 	message.Init(4096)
-	pointer := uintptr(unsafe.Pointer(&message.body.Bytes[0]))
+	pointer := uintptr(unsafe.Pointer(&message.body.Bytes[0])) //nolint:gosec
 	assertEqual(t, uintptr(0), pointer%messageWordSize)
 }
 
@@ -49,7 +51,7 @@ func TestMessage_putBlob(t *testing.T) {
 	message.Init(64)
 
 	for _, c := range cases {
-		t.Run(fmt.Sprintf("%d", c.Offset), func(t *testing.T) {
+		t.Run(strconv.Itoa(c.Offset), func(t *testing.T) {
 			message.putBlob(c.Blob)
 
 			bytes, offset := message.Body()
@@ -99,7 +101,7 @@ func TestMessage_putUint8(t *testing.T) {
 
 	bytes, offset := message.Body()
 
-	assertEqual(t, bytes[0], byte(v))
+	assertEqual(t, bytes[0], v)
 
 	assertEqual(t, offset, 1)
 }
@@ -241,7 +243,8 @@ func BenchmarkMessage_putString(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for range b.N {
 		message.reset()
 		message.putString("hello")
 	}
@@ -253,7 +256,8 @@ func BenchmarkMessage_putUint64(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for range b.N {
 		message.reset()
 		message.putUint64(270)
 	}
@@ -301,7 +305,7 @@ func TestMessage_getBlob(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		t.Run(fmt.Sprintf("%d", c.Offset), func(t *testing.T) {
+		t.Run(strconv.Itoa(c.Offset), func(t *testing.T) {
 			message := Message{}
 			message.Init(64)
 

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -29,7 +30,8 @@ import (
 func proxy(ctx context.Context, remote net.Conn, local net.Conn, config *tls.Config) error {
 	tcp, err := tryExtractTCPConn(remote)
 	if err == nil {
-		if err := setKeepalive(tcp); err != nil {
+		err := setKeepalive(tcp)
+		if err != nil {
 			return err
 		}
 	}
@@ -42,8 +44,8 @@ func proxy(ctx context.Context, remote net.Conn, local net.Conn, config *tls.Con
 		}
 	}
 
-	remoteToLocal := make(chan error, 0)
-	localToRemote := make(chan error, 0)
+	remoteToLocal := make(chan error)
+	localToRemote := make(chan error)
 
 	// Start copying data back and forth until either the client or the
 	// server get closed or hit an error.
@@ -62,35 +64,44 @@ func proxy(ctx context.Context, remote net.Conn, local net.Conn, config *tls.Con
 	select {
 	case <-ctx.Done():
 		// Force closing, ignore errors.
-		remote.Close()
-		local.Close()
+		_ = remote.Close()
+		_ = local.Close()
+
 		<-remoteToLocal
 		<-localToRemote
 	case err := <-remoteToLocal:
 		if err != nil {
-			errs[0] = fmt.Errorf("remote -> local: %v", err)
+			errs[0] = fmt.Errorf("remote -> local: %w", err)
 		}
-		local.(*net.UnixConn).CloseRead()
-		if err := <-localToRemote; err != nil {
-			errs[1] = fmt.Errorf("local -> remote: %v", err)
+
+		unixConn, ok := local.(*net.UnixConn)
+		if ok {
+			_ = unixConn.CloseRead()
 		}
-		remote.Close()
-		local.Close()
+
+		err = <-localToRemote
+		if err != nil {
+			errs[1] = fmt.Errorf("local -> remote: %w", err)
+		}
+
+		_ = remote.Close()
+		_ = local.Close()
 	case err := <-localToRemote:
 		if err != nil {
-			errs[0] = fmt.Errorf("local -> remote: %v", err)
+			errs[0] = fmt.Errorf("local -> remote: %w", err)
 		}
 
 		if tcp != nil {
-			tcp.CloseRead()
+			_ = tcp.CloseRead()
 		}
 
-		if err := <-remoteToLocal; err != nil {
-			errs[1] = fmt.Errorf("remote -> local: %v", err)
+		err = <-remoteToLocal
+		if err != nil {
+			errs[1] = fmt.Errorf("remote -> local: %w", err)
 		}
-		remote.Close()
-		local.Close()
 
+		_ = remote.Close()
+		_ = local.Close()
 	}
 
 	if errs[0] != nil || errs[1] != nil {
@@ -112,16 +123,16 @@ func tryExtractTCPConn(conn net.Conn) (*net.TCPConn, error) {
 	// remote.conn field, which is indeed the underlying TCP connection.
 	tlsConn, ok := conn.(*tls.Conn)
 	if !ok {
-		return nil, fmt.Errorf("connection is not a tls.Conn")
+		return nil, errors.New("connection is not a tls.Conn")
 	}
 
 	field := reflect.ValueOf(tlsConn).Elem().FieldByName("conn")
-	field = reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+	field = reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem() //nolint:gosec
 	c := field.Interface()
 
 	tcpConn, ok := c.(*net.TCPConn)
 	if !ok {
-		return nil, fmt.Errorf("connection is not a net.TCPConn")
+		return nil, errors.New("connection is not a net.TCPConn")
 	}
 
 	return tcpConn, nil
@@ -147,7 +158,7 @@ func setKeepalive(conn *net.TCPConn) error {
 		return err
 	}
 
-	raw.Control(
+	_ = raw.Control(
 		func(ptr uintptr) {
 			fd := int(ptr)
 			// Number of probes.
@@ -174,6 +185,7 @@ func setKeepalive(conn *net.TCPConn) error {
 				return
 			}
 		})
+
 	return err
 }
 
@@ -191,7 +203,8 @@ func socketpair() (net.Conn, net.Conn, error) {
 
 	c2, err := fdToFileConn(fds[1])
 	if err != nil {
-		c1.Close()
+		_ = c1.Close()
+
 		return nil, nil, err
 	}
 
@@ -201,6 +214,7 @@ func socketpair() (net.Conn, net.Conn, error) {
 func fdToFileConn(fd int) (net.Conn, error) {
 	f := os.NewFile(uintptr(fd), "")
 	defer f.Close()
+
 	return net.FileConn(f)
 }
 
@@ -214,11 +228,14 @@ func (e proxyError) Error() string {
 	if e.first != nil {
 		msg += "first: " + e.first.Error()
 	}
+
 	if e.second != nil {
 		if e.first != nil {
 			msg += " "
 		}
+
 		msg += "second: " + e.second.Error()
 	}
+
 	return msg
 }

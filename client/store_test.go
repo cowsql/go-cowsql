@@ -1,5 +1,4 @@
 //go:build !nosqlite3
-// +build !nosqlite3
 
 package client_test
 
@@ -15,6 +14,7 @@ import (
 
 func assertEqualError(t *testing.T, err error, msg string) {
 	t.Helper()
+
 	if err == nil {
 		t.Fatal()
 	}
@@ -39,6 +39,7 @@ func TestDefaultNodeStore(t *testing.T) {
 	requireNoError(t, err)
 
 	servers, err := store.Get(context.Background())
+	requireNoError(t, err)
 	assertEqual(t, []client.NodeInfo{
 		{ID: uint64(1), Address: "1.2.3.4:666"},
 		{ID: uint64(1), Address: "5.6.7.8:666"},
@@ -52,6 +53,7 @@ func TestDefaultNodeStore(t *testing.T) {
 	requireNoError(t, err)
 
 	servers, err = store.Get(context.Background())
+	requireNoError(t, err)
 	assertEqual(t, []client.NodeInfo{
 		{ID: uint64(1), Address: "1.2.3.4:666"},
 		{ID: uint64(1), Address: "9.9.9.9:666"},
@@ -66,6 +68,7 @@ func TestDefaultNodeStore(t *testing.T) {
 	assertEqualError(t, err, "failed to insert server 1.2.3.4:666: UNIQUE constraint failed: servers.address")
 
 	servers, err = store.Get(context.Background())
+	requireNoError(t, err)
 	assertEqual(t, []client.NodeInfo{
 		{ID: uint64(1), Address: "1.2.3.4:666"},
 		{ID: uint64(1), Address: "9.9.9.9:666"},
@@ -82,14 +85,19 @@ func TestConfigMultiThread(t *testing.T) {
 }
 
 func dummyDBSetup(t *testing.T) func() {
+	t.Helper()
+
 	store := client.NewInmemNodeStore()
 	driver, err := driver.New(store)
 	requireNoError(t, err)
 	sql.Register("dummy", driver)
+
 	db, err := sql.Open("dummy", "test.db")
 	requireNoError(t, err)
+
 	cleanup := func() {
 		requireNoError(t, db.Close())
 	}
+
 	return cleanup
 }

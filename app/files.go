@@ -26,10 +26,12 @@ const (
 func fileExists(dir, file string) (bool, error) {
 	path := filepath.Join(dir, file)
 
-	if _, err := os.Stat(path); err != nil {
+	_, err := os.Stat(path)
+	if err != nil {
 		if !os.IsNotExist(err) {
 			return false, fmt.Errorf("check if %s exists: %w", file, err)
 		}
+
 		return false, nil
 	}
 
@@ -40,7 +42,8 @@ func fileExists(dir, file string) (bool, error) {
 func fileWrite(dir, file string, data []byte) error {
 	path := filepath.Join(dir, file)
 
-	if err := renameio.WriteFile(path, data, 0o600); err != nil {
+	err := renameio.WriteFile(path, data, 0o600)
+	if err != nil {
 		return fmt.Errorf("write %s: %w", file, err)
 	}
 
@@ -53,9 +56,12 @@ func fileMarshal(dir, file string, object any) error {
 	if err != nil {
 		return fmt.Errorf("marshall %s: %w", file, err)
 	}
-	if err := fileWrite(dir, file, data); err != nil {
+
+	err = fileWrite(dir, file, data)
+	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -67,7 +73,9 @@ func fileUnmarshal(dir, file string, object any) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", file, err)
 	}
-	if err := yaml.Unmarshal(data, object); err != nil {
+
+	err = yaml.Unmarshal(data, object)
+	if err != nil {
 		return fmt.Errorf("unmarshall %s: %w", file, err)
 	}
 

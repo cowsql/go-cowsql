@@ -19,6 +19,7 @@ const (
 
 func requireNoError(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,6 +27,7 @@ func requireNoError(t *testing.T, err error) {
 
 func requireErrorf(t *testing.T, err error, msg string, args ...any) {
 	t.Helper()
+
 	if err == nil {
 		t.Fatalf(msg, args...)
 	}
@@ -34,7 +36,7 @@ func requireErrorf(t *testing.T, err error, msg string, args ...any) {
 func bmSetup(t *testing.T, addr string, join []string) (string, *app.App, *sql.DB, func()) {
 	t.Helper()
 
-	dir, err := os.MkdirTemp("", "cowsql-app-test-")
+	dir, err := os.MkdirTemp("", "cowsql-app-test-") //nolint:usetesting
 	requireNoError(t, err)
 
 	app, err := app.New(dir, app.WithAddress(addr), app.WithCluster(join))
@@ -48,15 +50,20 @@ func bmSetup(t *testing.T, addr string, join []string) (string, *app.App, *sql.D
 	requireNoError(t, err)
 
 	cleanups := func() {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
+
 		cancel()
 	}
+
 	return dir, app, db, cleanups
 }
 
 func bmRun(t *testing.T, bm *benchmark.Benchmark, app *app.App, db *sql.DB) {
+	t.Helper()
+
 	defer db.Close()
 	defer app.Close()
+
 	ch := make(chan os.Signal)
 
 	err := bm.Run(ch)
@@ -101,6 +108,7 @@ func TestNew_ClusteredKvReadWrite(t *testing.T) {
 	dir, app, db, cleanup := bmSetup(t, addr1, nil)
 	_, _, _, cleanup2 := bmSetup(t, addr2, []string{addr1})
 	_, _, _, cleanup3 := bmSetup(t, addr3, []string{addr1})
+
 	defer cleanup()
 	defer cleanup2()
 	defer cleanup3()

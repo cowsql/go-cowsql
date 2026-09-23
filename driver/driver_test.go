@@ -57,18 +57,24 @@ func TestConn_Exec(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	execer := conn.(driver.Execer)
-
-	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
+	_, err = conn.ExecContext(t.Context(), "CREATE TABLE test (n INT)", nil)
 	requireNoError(t, err)
 
-	result, err := execer.Exec("INSERT INTO test(n) VALUES(1)", nil)
+	result, err := conn.ExecContext(t.Context(), "INSERT INTO test(n) VALUES(1)", nil)
 	requireNoError(t, err)
 
 	lastInsertID, err := result.LastInsertId()
@@ -88,23 +94,28 @@ func TestConn_Query(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	execer := conn.(driver.Execer)
-
-	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
+	_, err = conn.ExecContext(t.Context(), "CREATE TABLE test (n INT)", nil)
 	requireNoError(t, err)
 
-	_, err = execer.Exec("INSERT INTO test(n) VALUES(1)", nil)
+	_, err = conn.ExecContext(t.Context(), "INSERT INTO test(n) VALUES(1)", nil)
 	requireNoError(t, err)
 
-	queryer := conn.(driver.Queryer)
-
-	_, err = queryer.Query("SELECT n FROM test", nil)
+	_, err = conn.QueryContext(t.Context(), "SELECT n FROM test", nil)
 	requireNoError(t, err)
 
 	assertNoError(t, conn.Close())
@@ -114,26 +125,31 @@ func TestConn_QueryRow(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	execer := conn.(driver.Execer)
-
-	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
+	_, err = conn.ExecContext(t.Context(), "CREATE TABLE test (n INT)", nil)
 	requireNoError(t, err)
 
-	_, err = execer.Exec("INSERT INTO test(n) VALUES(1)", nil)
+	_, err = conn.ExecContext(t.Context(), "INSERT INTO test(n) VALUES(1)", nil)
 	requireNoError(t, err)
 
-	_, err = execer.Exec("INSERT INTO test(n) VALUES(1)", nil)
+	_, err = conn.ExecContext(t.Context(), "INSERT INTO test(n) VALUES(1)", nil)
 	requireNoError(t, err)
 
-	queryer := conn.(driver.Queryer)
-
-	rows, err := queryer.Query("SELECT n FROM test", nil)
+	rows, err := conn.QueryContext(t.Context(), "SELECT n FROM test", nil)
 	requireNoError(t, err)
 
 	values := make([]driver.Value, 1)
@@ -148,34 +164,39 @@ func TestConn_QueryBlob(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	execer := conn.(driver.Execer)
-
-	_, err = execer.Exec("CREATE TABLE test (data BLOB)", nil)
+	_, err = conn.ExecContext(t.Context(), "CREATE TABLE test (data BLOB)", nil)
 	requireNoError(t, err)
 
-	values := []driver.Value{
-		[]byte{'a', 'b', 'c'},
+	values := []driver.NamedValue{
+		{Ordinal: 1, Value: []byte{'a', 'b', 'c'}},
 	}
-	_, err = execer.Exec("INSERT INTO test(data) VALUES(?)", values)
+	_, err = conn.ExecContext(t.Context(), "INSERT INTO test(data) VALUES(?)", values)
 	requireNoError(t, err)
 
-	queryer := conn.(driver.Queryer)
-
-	rows, err := queryer.Query("SELECT data FROM test", nil)
+	rows, err := conn.QueryContext(t.Context(), "SELECT data FROM test", nil)
 	requireNoError(t, err)
 
 	assertEqual(t, rows.Columns(), []string{"data"})
 
-	values = make([]driver.Value, 1)
-	requireNoError(t, rows.Next(values))
+	result := make([]driver.Value, 1)
+	requireNoError(t, rows.Next(result))
 
-	assertEqual(t, []byte{'a', 'b', 'c'}, values[0])
+	assertEqual(t, []byte{'a', 'b', 'c'}, result[0])
 
 	assertNoError(t, conn.Close())
 }
@@ -184,28 +205,51 @@ func TestStmt_Exec(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	driverStmt, err := conn.Prepare("CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	stmt, ok := driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(nil)
+	_, err = stmt.ExecContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, stmt.Close())
 
-	values := []driver.Value{
-		int64(1),
+	values := []driver.NamedValue{
+		{Ordinal: 1, Value: int64(1)},
 	}
 
-	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES(?)")
+	driverStmt, err = conn.Prepare("INSERT INTO test(n) VALUES(?)")
 	requireNoError(t, err)
 
-	result, err := stmt.Exec(values)
+	stmt, ok = driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	result, err := stmt.ExecContext(t.Context(), values)
 	requireNoError(t, err)
 
 	lastInsertID, err := result.LastInsertId()
@@ -227,28 +271,52 @@ func TestStmt_ExecManyParams(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	driverStmt, err := conn.Prepare("CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	stmt, ok := driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(nil)
+	_, err = stmt.ExecContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, stmt.Close())
 
-	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES " + strings.Repeat("(?), ", 299) + " (?)")
+	driverStmt, err = conn.Prepare("INSERT INTO test(n) VALUES " + strings.Repeat("(?), ", 299) + " (?)")
 	requireNoError(t, err)
 
-	values := make([]driver.Value, 300)
+	stmt, ok = driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	values := make([]driver.NamedValue, 300)
 	for i := range values {
-		values[i] = int64(1)
+		values[i] = driver.NamedValue{Ordinal: i + 1, Value: int64(1)}
 	}
-	_, err = stmt.Exec(values)
+
+	_, err = stmt.ExecContext(t.Context(), values)
 	requireNoError(t, err)
 
 	requireNoError(t, stmt.Close())
@@ -259,32 +327,60 @@ func TestStmt_Query(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+	})
+	requireTrue(t, ok)
+
+	driverStmt, err := conn.PrepareContext(t.Context(), "CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	stmt, ok := driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(nil)
+	_, err = stmt.ExecContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, stmt.Close())
 
-	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES(-123)")
+	driverStmt, err = conn.PrepareContext(t.Context(), "INSERT INTO test(n) VALUES(-123)")
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(nil)
+	stmt, ok = driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	_, err = stmt.ExecContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, stmt.Close())
 
-	stmt, err = conn.Prepare("SELECT n FROM test")
+	driverStmt, err = conn.PrepareContext(t.Context(), "SELECT n FROM test")
 	requireNoError(t, err)
 
-	rows, err := stmt.Query(nil)
+	stmt, ok = driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	rows, err := stmt.QueryContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	assertEqual(t, rows.Columns(), []string{"n"})
@@ -305,28 +401,52 @@ func TestStmt_QueryManyParams(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	driverStmt, err := conn.Prepare("CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	stmt, ok := driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(nil)
+	_, err = stmt.ExecContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, stmt.Close())
 
-	stmt, err = conn.Prepare("SELECT n FROM test WHERE n IN (" + strings.Repeat("?, ", 299) + " ?)")
+	driverStmt, err = conn.Prepare("SELECT n FROM test WHERE n IN (" + strings.Repeat("?, ", 299) + " ?)")
 	requireNoError(t, err)
 
-	values := make([]driver.Value, 300)
+	stmt, ok = driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	values := make([]driver.NamedValue, 300)
 	for i := range values {
-		values[i] = int64(1)
+		values[i] = driver.NamedValue{Ordinal: i + 1, Value: int64(1)}
 	}
-	_, err = stmt.Query(values)
+
+	_, err = stmt.QueryContext(t.Context(), values)
 	requireNoError(t, err)
 
 	requireNoError(t, stmt.Close())
@@ -337,18 +457,25 @@ func TestConn_QueryParams(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	execer := conn.(driver.Execer)
-
-	_, err = execer.Exec("CREATE TABLE test (n INT, t TEXT)", nil)
+	_, err = conn.ExecContext(t.Context(), "CREATE TABLE test (n INT, t TEXT)", nil)
 	requireNoError(t, err)
 
-	_, err = execer.Exec(`
+	_, err = conn.ExecContext(t.Context(), `
 INSERT INTO test (n,t) VALUES (1,'a');
 INSERT INTO test (n,t) VALUES (2,'a');
 INSERT INTO test (n,t) VALUES (2,'b');
@@ -357,25 +484,23 @@ INSERT INTO test (n,t) VALUES (3,'b');
 		nil)
 	requireNoError(t, err)
 
-	values := []driver.Value{
-		int64(1),
-		"a",
+	values := []driver.NamedValue{
+		{Ordinal: 1, Value: int64(1)},
+		{Ordinal: 2, Value: "a"},
 	}
 
-	queryer := conn.(driver.Queryer)
-
-	rows, err := queryer.Query("SELECT n, t FROM test WHERE n > ? AND t = ?", values)
+	rows, err := conn.QueryContext(t.Context(), "SELECT n, t FROM test WHERE n > ? AND t = ?", values)
 	requireNoError(t, err)
 
 	assertEqual(t, rows.Columns()[0], "n")
 
-	values = make([]driver.Value, 2)
-	requireNoError(t, rows.Next(values))
+	result := make([]driver.Value, 2)
+	requireNoError(t, rows.Next(result))
 
-	assertEqual(t, int64(2), values[0])
-	assertEqual(t, "a", values[1])
+	assertEqual(t, int64(2), result[0])
+	assertEqual(t, "a", result[1])
 
-	requireEqual(t, io.EOF, rows.Next(values))
+	requireEqual(t, io.EOF, rows.Next(result))
 
 	assertNoError(t, conn.Close())
 }
@@ -384,23 +509,30 @@ func TestConn_QueryManyParams(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	execer := conn.(driver.Execer)
-
-	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
+	_, err = conn.ExecContext(t.Context(), "CREATE TABLE test (n INT)", nil)
 	requireNoError(t, err)
 
-	values := make([]driver.Value, 300)
+	values := make([]driver.NamedValue, 300)
 	for i := range values {
-		values[i] = int64(1)
+		values[i] = driver.NamedValue{Ordinal: i + 1, Value: int64(1)}
 	}
-	queryer := conn.(driver.Queryer)
-	_, err = queryer.Query("SELECT n FROM test WHERE n IN ("+strings.Repeat("?, ", 299)+" ?)", values)
+
+	_, err = conn.QueryContext(t.Context(), "SELECT n FROM test WHERE n IN ("+strings.Repeat("?, ", 299)+" ?)", values)
 	requireNoError(t, err)
 
 	assertNoError(t, conn.Close())
@@ -410,23 +542,30 @@ func TestConn_ExecManyParams(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	execer := conn.(driver.Execer)
-
-	_, err = execer.Exec("CREATE TABLE test (n INT)", nil)
+	_, err = conn.ExecContext(t.Context(), "CREATE TABLE test (n INT)", nil)
 	requireNoError(t, err)
 
-	values := make([]driver.Value, 300)
+	values := make([]driver.NamedValue, 300)
 	for i := range values {
-		values[i] = int64(1)
+		values[i] = driver.NamedValue{Ordinal: i + 1, Value: int64(1)}
 	}
 
-	_, err = execer.Exec("INSERT INTO test(n) VALUES "+strings.Repeat("(?), ", 299)+" (?)", values)
+	_, err = conn.ExecContext(t.Context(), "INSERT INTO test(n) VALUES "+strings.Repeat("(?), ", 299)+" (?)", values)
 	requireNoError(t, err)
 
 	assertNoError(t, conn.Close())
@@ -434,30 +573,55 @@ func TestConn_ExecManyParams(t *testing.T) {
 
 func Test_ColumnTypesEmpty(t *testing.T) {
 	t.Skip("this currently fails if the result set is empty, is cowsql skipping the header if empty set?")
+
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	driverStmt, err := conn.Prepare("CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	stmt, ok := driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(nil)
+	_, err = stmt.ExecContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, stmt.Close())
 
-	stmt, err = conn.Prepare("SELECT n FROM test")
+	driverStmt, err = conn.Prepare("SELECT n FROM test")
 	requireNoError(t, err)
 
-	rows, err := stmt.Query(nil)
+	stmt, ok = driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	rows, err := stmt.QueryContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, err)
+
 	rowTypes, ok := rows.(driver.RowsColumnTypeDatabaseTypeName)
 	requireTrue(t, ok)
 
@@ -473,33 +637,64 @@ func Test_ColumnTypesExists(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	driverStmt, err := conn.Prepare("CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	stmt, ok := driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(nil)
+	_, err = stmt.ExecContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, stmt.Close())
 
-	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES(-123)")
+	driverStmt, err = conn.Prepare("INSERT INTO test(n) VALUES(-123)")
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(nil)
+	stmt, ok = driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	_, err = stmt.ExecContext(t.Context(), nil)
 	requireNoError(t, err)
 
-	stmt, err = conn.Prepare("SELECT n FROM test")
+	driverStmt, err = conn.Prepare("SELECT n FROM test")
 	requireNoError(t, err)
 
-	rows, err := stmt.Query(nil)
+	stmt, ok = driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	rows, err := stmt.QueryContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, err)
+
 	rowTypes, ok := rows.(driver.RowsColumnTypeDatabaseTypeName)
 	requireTrue(t, ok)
 
@@ -511,38 +706,67 @@ func Test_ColumnTypesExists(t *testing.T) {
 }
 
 // ensure column types data is available
-// even after the last row of the query
+// even after the last row of the query.
 func Test_ColumnTypesEnd(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
 
-	stmt, err := conn.Prepare("CREATE TABLE test (n INT)")
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+	})
+	requireTrue(t, ok)
+
+	driverStmt, err := conn.Prepare("CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
-	_, err = conn.Begin()
+	stmt, ok := driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	_, err = conn.BeginTx(t.Context(), driver.TxOptions{})
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(nil)
+	_, err = stmt.ExecContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, stmt.Close())
 
-	stmt, err = conn.Prepare("INSERT INTO test(n) VALUES(-123)")
+	driverStmt, err = conn.Prepare("INSERT INTO test(n) VALUES(-123)")
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(nil)
+	stmt, ok = driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	_, err = stmt.ExecContext(t.Context(), nil)
 	requireNoError(t, err)
 
-	stmt, err = conn.Prepare("SELECT n FROM test")
+	driverStmt, err = conn.Prepare("SELECT n FROM test")
 	requireNoError(t, err)
 
-	rows, err := stmt.Query(nil)
+	stmt, ok = driverStmt.(interface {
+		driver.Stmt
+		driver.StmtExecContext
+		driver.StmtQueryContext
+	})
+	requireTrue(t, ok)
+
+	rows, err := stmt.QueryContext(t.Context(), nil)
 	requireNoError(t, err)
 
 	requireNoError(t, err)
+
 	rowTypes, ok := rows.(driver.RowsColumnTypeDatabaseTypeName)
 	requireTrue(t, ok)
 
@@ -568,12 +792,21 @@ func Test_ZeroColumns(t *testing.T) {
 	drv, cleanup := newDriver(t)
 	defer cleanup()
 
-	conn, err := drv.Open("test.db")
+	driverConn, err := drv.Open("test.db")
 	requireNoError(t, err)
-	queryer := conn.(driver.Queryer)
 
-	rows, err := queryer.Query("CREATE TABLE foo (bar INTEGER)", []driver.Value{})
+	conn, ok := driverConn.(interface {
+		driver.Conn
+		driver.ConnBeginTx
+		driver.ConnPrepareContext
+		driver.ExecerContext
+		driver.QueryerContext
+	})
+	requireTrue(t, ok)
+
+	rows, err := conn.QueryContext(t.Context(), "CREATE TABLE foo (bar INTEGER)", []driver.NamedValue{})
 	requireNoError(t, err)
+
 	values := []driver.Value{}
 	requireEqual(t, io.EOF, rows.Next(values))
 
@@ -628,7 +861,7 @@ func newNode(t *testing.T) (*cowsql.Node, func()) {
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := os.MkdirTemp("", "cowsql-replication-test-")
+	dir, err := os.MkdirTemp("", "cowsql-replication-test-") //nolint:usetesting
 	assertNoError(t, err)
 
 	cleanup := func() {

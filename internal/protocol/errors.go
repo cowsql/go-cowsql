@@ -1,17 +1,14 @@
 package protocol
 
 import (
+	"errors"
 	"fmt"
 )
 
 // Client errors.
 var (
-	ErrNoAvailableLeader = fmt.Errorf("no available cowsql leader server found")
-	errStop              = fmt.Errorf("connector was stopped")
-	errStaleLeader       = fmt.Errorf("server has lost leadership")
-	errNotClustered      = fmt.Errorf("server is not clustered")
-	errNegativeRead      = fmt.Errorf("reader returned negative count from Read")
-	errMessageEOF        = fmt.Errorf("message eof")
+	ErrNoAvailableLeader = errors.New("no available cowsql leader server found")
+	errNegativeRead      = errors.New("reader returned negative count from Read")
 )
 
 // ErrRequest is returned in case of request failure.
@@ -26,7 +23,7 @@ func (e ErrRequest) Error() string {
 
 // ErrRowsPart is returned when the first batch of a multi-response result
 // batch is done.
-var ErrRowsPart = fmt.Errorf("not all rows were returned in this response")
+var ErrRowsPart = errors.New("not all rows were returned in this response")
 
 // Error holds information about a SQLite error.
 type Error struct {

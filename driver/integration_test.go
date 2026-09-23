@@ -3,6 +3,7 @@ package driver_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -26,6 +27,7 @@ var (
 
 func assertTrue(t *testing.T, ok bool) {
 	t.Helper()
+
 	if !ok {
 		t.Fatal(ok)
 	}
@@ -33,6 +35,7 @@ func assertTrue(t *testing.T, ok bool) {
 
 func assertNoError(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,6 +43,7 @@ func assertNoError(t *testing.T, err error) {
 
 func assertEqual(t *testing.T, expected, actual any) {
 	t.Helper()
+
 	if expected == nil || actual == nil {
 		if expected != actual {
 			t.Fatal(expected, actual)
@@ -53,6 +57,7 @@ func assertEqual(t *testing.T, expected, actual any) {
 
 func assertEqualError(t *testing.T, err error, msg string) {
 	t.Helper()
+
 	if err == nil {
 		t.Fatal()
 	}
@@ -70,7 +75,7 @@ func requireNil(t *testing.T, x any) {
 		switch v.Kind() {
 		case reflect.Chan, reflect.Func,
 			reflect.Interface, reflect.Map,
-			reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
+			reflect.Pointer, reflect.Slice, reflect.UnsafePointer:
 			if !v.IsNil() {
 				t.Fatal(x)
 			}
@@ -89,7 +94,7 @@ func requireNotNil(t *testing.T, x any) {
 	switch v.Kind() {
 	case reflect.Chan, reflect.Func,
 		reflect.Interface, reflect.Map,
-		reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
+		reflect.Pointer, reflect.Slice, reflect.UnsafePointer:
 		if v.IsNil() {
 			t.Fatal(x)
 		}
@@ -98,6 +103,7 @@ func requireNotNil(t *testing.T, x any) {
 
 func assertError(t *testing.T, err error) {
 	t.Helper()
+
 	if err == nil {
 		t.Fatal()
 	}
@@ -107,37 +113,39 @@ func TestIntegration_DatabaseSQL(t *testing.T) {
 	db, _, cleanup := newDB(t, 3)
 	defer cleanup()
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(t.Context(), nil)
 	requireNoError(t, err)
 
-	_, err = tx.Exec(`
+	_, err = tx.ExecContext(t.Context(), `
 CREATE TABLE test  (n INT, s TEXT);
 CREATE TABLE test2 (n INT, t DATETIME DEFAULT CURRENT_TIMESTAMP)
 `)
 	requireNoError(t, err)
 
-	stmt, err := tx.Prepare("INSERT INTO test(n, s) VALUES(?, ?)")
+	stmt, err := tx.PrepareContext(t.Context(), "INSERT INTO test(n, s) VALUES(?, ?)")
 	requireNoError(t, err)
 
-	_, err = stmt.Exec(int64(123), "hello")
+	_, err = stmt.ExecContext(t.Context(), int64(123), "hello")
 	requireNoError(t, err)
 
-	requireNoError(t, stmt.Close())
+	requireNoError(t, stmt.Close()) //nolint:sqlclosecheck
 
-	_, err = tx.Exec("INSERT INTO test2(n) VALUES(?)", int64(456))
+	_, err = tx.ExecContext(t.Context(), "INSERT INTO test2(n) VALUES(?)", int64(456))
 	requireNoError(t, err)
 
 	requireNoError(t, tx.Commit())
 
-	tx, err = db.Begin()
+	tx, err = db.BeginTx(t.Context(), nil)
 	requireNoError(t, err)
 
-	rows, err := tx.Query("SELECT n, s FROM test")
+	rows, err := tx.QueryContext(t.Context(), "SELECT n, s FROM test")
 	requireNoError(t, err)
 
 	for rows.Next() {
-		var n int64
-		var s string
+		var (
+			n int64
+			s string
+		)
 
 		requireNoError(t, rows.Scan(&n, &s))
 
@@ -146,14 +154,16 @@ CREATE TABLE test2 (n INT, t DATETIME DEFAULT CURRENT_TIMESTAMP)
 	}
 
 	requireNoError(t, rows.Err())
-	requireNoError(t, rows.Close())
+	requireNoError(t, rows.Close()) //nolint:sqlclosecheck
 
-	rows, err = tx.Query("SELECT n, t FROM test2")
+	rows, err = tx.QueryContext(t.Context(), "SELECT n, t FROM test2")
 	requireNoError(t, err)
 
 	for rows.Next() {
-		var n int64
-		var s time.Time
+		var (
+			n int64
+			s time.Time
+		)
 
 		requireNoError(t, rows.Scan(&n, &s))
 
@@ -161,7 +171,7 @@ CREATE TABLE test2 (n INT, t DATETIME DEFAULT CURRENT_TIMESTAMP)
 	}
 
 	requireNoError(t, rows.Err())
-	requireNoError(t, rows.Close())
+	requireNoError(t, rows.Close()) //nolint:sqlclosecheck
 
 	requireNoError(t, tx.Rollback())
 }
@@ -170,16 +180,18 @@ func TestIntegration_ConstraintError(t *testing.T) {
 	db, _, cleanup := newDB(t, 3)
 	defer cleanup()
 
-	_, err := db.Exec("CREATE TABLE test (n INT, UNIQUE (n))")
+	_, err := db.ExecContext(t.Context(), "CREATE TABLE test (n INT, UNIQUE (n))")
 	requireNoError(t, err)
 
-	_, err = db.Exec("INSERT INTO test (n) VALUES (1)")
+	_, err = db.ExecContext(t.Context(), "INSERT INTO test (n) VALUES (1)")
 	requireNoError(t, err)
 
-	_, err = db.Exec("INSERT INTO test (n) VALUES (1)")
-	if err, ok := err.(driver.Error); ok {
-		assertEqual(t, SQLITE_CONSTRAINT_UNIQUE, err.Code)
-		assertEqual(t, "UNIQUE constraint failed: test.n", err.Message)
+	_, err = db.ExecContext(t.Context(), "INSERT INTO test (n) VALUES (1)")
+
+	var driverErr driver.Error
+	if errors.As(err, &driverErr) {
+		assertEqual(t, SQLITE_CONSTRAINT_UNIQUE, driverErr.Code)
+		assertEqual(t, "UNIQUE constraint failed: test.n", driverErr.Message)
 	} else {
 		t.Fatalf("expected diver error, got %+v", err)
 	}
@@ -208,7 +220,7 @@ func TestIntegration_QueryBindError(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	_, err := db.QueryContext(ctx, "SELECT 1", 1)
+	_, err := db.QueryContext(ctx, "SELECT 1", 1) //nolint:rowserrcheck,sqlclosecheck
 	assertEqualError(t, err, "bind parameters")
 }
 
@@ -216,28 +228,28 @@ func TestIntegration_LargeQuery(t *testing.T) {
 	db, _, cleanup := newDB(t, 3)
 	defer cleanup()
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(t.Context(), nil)
 	requireNoError(t, err)
 
-	_, err = tx.Exec("CREATE TABLE test (n INT)")
+	_, err = tx.ExecContext(t.Context(), "CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
-	stmt, err := tx.Prepare("INSERT INTO test(n) VALUES(?)")
+	stmt, err := tx.PrepareContext(t.Context(), "INSERT INTO test(n) VALUES(?)")
 	requireNoError(t, err)
 
 	for i := range 512 {
-		_, err = stmt.Exec(int64(i))
+		_, err = stmt.ExecContext(t.Context(), int64(i))
 		requireNoError(t, err)
 	}
 
-	requireNoError(t, stmt.Close())
+	requireNoError(t, stmt.Close()) //nolint:sqlclosecheck
 
 	requireNoError(t, tx.Commit())
 
-	tx, err = db.Begin()
+	tx, err = db.BeginTx(t.Context(), nil)
 	requireNoError(t, err)
 
-	rows, err := tx.Query("SELECT n FROM test")
+	rows, err := tx.QueryContext(t.Context(), "SELECT n FROM test")
 	requireNoError(t, err)
 
 	columns, err := rows.Columns()
@@ -246,17 +258,19 @@ func TestIntegration_LargeQuery(t *testing.T) {
 	assertEqual(t, []string{"n"}, columns)
 
 	count := 0
+
 	for i := 0; rows.Next(); i++ {
 		var n int64
 
 		requireNoError(t, rows.Scan(&n))
 
 		assertEqual(t, int64(i), n)
+
 		count++
 	}
 
 	requireNoError(t, rows.Err())
-	requireNoError(t, rows.Close())
+	requireNoError(t, rows.Close()) //nolint:sqlclosecheck
 
 	assertEqual(t, count, 512)
 
@@ -268,7 +282,7 @@ func TestIntegration_Recover(t *testing.T) {
 	db, helpers, cleanup := newDB(t, 2)
 	defer cleanup()
 
-	_, err := db.Exec("CREATE TABLE test (n INT)")
+	_, err := db.ExecContext(t.Context(), "CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
 	helpers[0].Close()
@@ -277,21 +291,21 @@ func TestIntegration_Recover(t *testing.T) {
 	helpers[0].Create()
 
 	infos := []client.NodeInfo{{ID: 1, Address: "@1"}}
-	requireNoError(t, helpers[0].Node.Recover(infos))
+	requireNoError(t, helpers[0].Node.Recover(infos)) //nolint:staticcheck
 
 	helpers[0].Start()
 
 	// FIXME: this is necessary otherwise the INSERT below fails with "no
 	// such table", because the replication hooks are not triggered and the
 	// barrier is not applied.
-	_, err = db.Exec("CREATE TABLE test2 (n INT)")
+	_, err = db.ExecContext(t.Context(), "CREATE TABLE test2 (n INT)")
 	requireNoError(t, err)
 
-	_, err = db.Exec("INSERT INTO test(n) VALUES(1)")
+	_, err = db.ExecContext(t.Context(), "INSERT INTO test(n) VALUES(1)")
 	requireNoError(t, err)
 }
 
-// The db.Ping() method can be used to wait until there is a stable leader.
+// The db.PingContext(t.Context()) method can be used to wait until there is a stable leader.
 func TestIntegration_PingOnlyWorksOnceLeaderElected(t *testing.T) {
 	db, helpers, cleanup := newDB(t, 2)
 	defer cleanup()
@@ -301,25 +315,26 @@ func TestIntegration_PingOnlyWorksOnceLeaderElected(t *testing.T) {
 	// Ping returns an error, since the cluster is not available.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+
 	assertError(t, db.PingContext(ctx))
 
 	helpers[0].Create()
 	helpers[0].Start()
 
 	// Ping now returns no error, since the cluster is available.
-	assertNoError(t, db.Ping())
+	assertNoError(t, db.PingContext(t.Context()))
 
 	// If leadership is lost after the first successful call, Ping() still
 	// returns no error.
 	helpers[0].Close()
-	assertNoError(t, db.Ping())
+	assertNoError(t, db.PingContext(t.Context()))
 }
 
 func TestIntegration_HighAvailability(t *testing.T) {
 	db, helpers, cleanup := newDB(t, 3)
 	defer cleanup()
 
-	_, err := db.Exec("CREATE TABLE test (n INT)")
+	_, err := db.ExecContext(t.Context(), "CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
 	// Shutdown all three nodes.
@@ -336,7 +351,7 @@ func TestIntegration_HighAvailability(t *testing.T) {
 	// Give the cluster a chance to establish a quorom
 	time.Sleep(2 * time.Second)
 
-	_, err = db.Exec("INSERT INTO test(n) VALUES(1)")
+	_, err = db.ExecContext(t.Context(), "INSERT INTO test(n) VALUES(1)")
 	requireNoError(t, err)
 }
 
@@ -344,13 +359,13 @@ func TestIntegration_LeadershipTransfer(t *testing.T) {
 	db, helpers, cleanup := newDB(t, 3)
 	defer cleanup()
 
-	_, err := db.Exec("CREATE TABLE test (n INT)")
+	_, err := db.ExecContext(t.Context(), "CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
 	cli := helpers[0].Client()
 	requireNoError(t, cli.Transfer(context.Background(), 2))
 
-	_, err = db.Exec("INSERT INTO test(n) VALUES(1)")
+	_, err = db.ExecContext(t.Context(), "INSERT INTO test(n) VALUES(1)")
 	requireNoError(t, err)
 }
 
@@ -358,16 +373,16 @@ func TestIntegration_LeadershipTransfer_Tx(t *testing.T) {
 	db, helpers, cleanup := newDB(t, 3)
 	defer cleanup()
 
-	_, err := db.Exec("CREATE TABLE test (n INT)")
+	_, err := db.ExecContext(t.Context(), "CREATE TABLE test (n INT)")
 	requireNoError(t, err)
 
 	cli := helpers[0].Client()
 	requireNoError(t, cli.Transfer(context.Background(), 2))
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(t.Context(), nil)
 	requireNoError(t, err)
 
-	_, err = tx.Query("SELECT * FROM test")
+	_, err = tx.QueryContext(t.Context(), "SELECT * FROM test") //nolint:rowserrcheck,sqlclosecheck,unqueryvet
 	requireNoError(t, err)
 
 	requireNoError(t, tx.Commit())
@@ -392,16 +407,20 @@ func TestOptions(t *testing.T) {
 }
 
 func newDB(t *testing.T, n int) (*sql.DB, []*nodeHelper, func()) {
+	t.Helper()
+
 	infos := make([]client.NodeInfo, n)
 	for i := range infos {
 		infos[i].ID = uint64(i + 1)
 		infos[i].Address = fmt.Sprintf("@%d", infos[i].ID)
 		infos[i].Role = client.Voter
 	}
+
 	return newDBWithInfos(t, infos)
 }
 
 func newDBWithInfos(t *testing.T, infos []client.NodeInfo) (*sql.DB, []*nodeHelper, func()) {
+	t.Helper()
 	helpers, helpersCleanup := newNodeHelpers(t, infos)
 
 	store := client.NewInmemNodeStore()
@@ -429,13 +448,6 @@ func newDBWithInfos(t *testing.T, infos []client.NodeInfo) (*sql.DB, []*nodeHelp
 	return db, helpers, cleanup
 }
 
-func registerDriver(driver *driver.Driver) string {
-	name := fmt.Sprintf("cowsql-integration-test-%d", driversCount)
-	sql.Register(name, driver)
-	driversCount++
-	return name
-}
-
 type nodeHelper struct {
 	t       *testing.T
 	ID      uint64
@@ -445,6 +457,7 @@ type nodeHelper struct {
 }
 
 func newNodeHelper(t *testing.T, id uint64, address string) *nodeHelper {
+	t.Helper()
 	h := &nodeHelper{
 		t:       t,
 		ID:      id,
@@ -462,11 +475,13 @@ func newNodeHelper(t *testing.T, id uint64, address string) *nodeHelper {
 func (h *nodeHelper) Client() *client.Client {
 	client, err := client.New(context.Background(), h.Node.BindAddress())
 	requireNoError(h.t, err)
+
 	return client
 }
 
 func (h *nodeHelper) Create() {
 	var err error
+
 	requireNil(h.t, h.Node)
 	h.Node, err = cowsql.New(h.ID, h.Address, h.Dir, cowsql.WithBindAddress(h.Address))
 	requireNoError(h.t, err)
@@ -487,6 +502,7 @@ func (h *nodeHelper) cleanup() {
 	if h.Node != nil {
 		h.Close()
 	}
+
 	requireNoError(h.t, os.RemoveAll(h.Dir))
 }
 
@@ -501,7 +517,7 @@ func newNodeHelpers(t *testing.T, infos []client.NodeInfo) ([]*nodeHelper, func(
 
 		if i > 0 {
 			client := helpers[0].Client()
-			defer client.Close()
+			defer client.Close() //nolint:revive
 
 			requireNoError(t, client.Add(context.Background(), infos[i]))
 		}
@@ -522,14 +538,15 @@ func TestIntegration_ColumnTypeName(t *testing.T) {
 	db, _, cleanup := newDB(t, 1)
 	defer cleanup()
 
-	_, err := db.Exec("CREATE TABLE test (n INT, UNIQUE (n))")
+	_, err := db.ExecContext(t.Context(), "CREATE TABLE test (n INT, UNIQUE (n))")
 	requireNoError(t, err)
 
-	_, err = db.Exec("INSERT INTO test (n) VALUES (1)")
+	_, err = db.ExecContext(t.Context(), "INSERT INTO test (n) VALUES (1)")
 	requireNoError(t, err)
 
-	rows, err := db.Query("SELECT n FROM test")
+	rows, err := db.QueryContext(t.Context(), "SELECT n FROM test") //nolint:rowserrcheck,sqlclosecheck
 	requireNoError(t, err)
+
 	defer rows.Close()
 
 	types, err := rows.ColumnTypes()
@@ -538,7 +555,9 @@ func TestIntegration_ColumnTypeName(t *testing.T) {
 	assertEqual(t, "INTEGER", types[0].DatabaseTypeName())
 
 	requireTrue(t, rows.Next())
+
 	var n int64
+
 	err = rows.Scan(&n)
 	requireNoError(t, err)
 
@@ -549,23 +568,27 @@ func TestIntegration_SqlNullTime(t *testing.T) {
 	db, _, cleanup := newDB(t, 1)
 	defer cleanup()
 
-	_, err := db.Exec("CREATE TABLE test (tm DATETIME)")
+	_, err := db.ExecContext(t.Context(), "CREATE TABLE test (tm DATETIME)")
 	requireNoError(t, err)
 
 	// Insert sql.NullTime into DB
 	var t1 sql.NullTime
-	res, err := db.Exec("INSERT INTO test (tm) VALUES (?)", t1)
+
+	res, err := db.ExecContext(t.Context(), "INSERT INTO test (tm) VALUES (?)", t1)
 	requireNoError(t, err)
 
 	n, err := res.RowsAffected()
 	requireNoError(t, err)
+
 	if n != 1 {
 		t.Fatal(n, 1)
 	}
 
 	// Retrieve inserted sql.NullTime from DB
-	row := db.QueryRow("SELECT tm FROM test LIMIT 1")
+	row := db.QueryRowContext(t.Context(), "SELECT tm FROM test LIMIT 1")
+
 	var t2 sql.NullTime
+
 	err = row.Scan(&t2)
 	requireNoError(t, err)
 

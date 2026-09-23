@@ -15,7 +15,7 @@ import (
 //
 // The very first node has always the same ID (cowsql.BootstrapID).
 func Example() {
-	dir, err := os.MkdirTemp("", "cowsql-app-example-")
+	dir, err := os.MkdirTemp("", "cowsql-app-example-") //nolint:usetesting
 	if err != nil {
 		return
 	}
@@ -28,7 +28,8 @@ func Example() {
 
 	fmt.Printf("0x%x %s\n", node.ID(), node.Address())
 
-	if err := node.Close(); err != nil {
+	err = node.Close()
+	if err != nil {
 		return
 	}
 
@@ -53,20 +54,20 @@ func Example() {
 // be omitted, since the node has already joined the cluster.
 //
 // Each additional node will be automatically assigned a unique ID.
-func ExampleWithCluster() {
-	dir1, err := os.MkdirTemp("", "cowsql-app-example-")
+func ExampleWithCluster() { //nolint:testableexamples
+	dir1, err := os.MkdirTemp("", "cowsql-app-example-") //nolint:usetesting
 	if err != nil {
 		return
 	}
 	defer os.RemoveAll(dir1)
 
-	dir2, err := os.MkdirTemp("", "cowsql-app-example-")
+	dir2, err := os.MkdirTemp("", "cowsql-app-example-") //nolint:usetesting
 	if err != nil {
 		return
 	}
 	defer os.RemoveAll(dir2)
 
-	dir3, err := os.MkdirTemp("", "cowsql-app-example-")
+	dir3, err := os.MkdirTemp("", "cowsql-app-example-") //nolint:usetesting
 	if err != nil {
 		return
 	}
@@ -90,12 +91,14 @@ func ExampleWithCluster() {
 	}
 
 	fmt.Println(node1.ID() != node2.ID(), node1.ID() != node3.ID(), node2.ID() != node3.ID())
-	// true true true
+	// true
 
 	// Restart the third node, the only argument we need to pass to
 	// app.New() is its dir.
 	id3 := node3.ID()
-	if err := node3.Close(); err != nil {
+
+	err = node3.Close()
+	if err != nil {
 		return
 	}
 

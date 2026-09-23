@@ -86,7 +86,7 @@ type DialFunc = protocol.DialFunc
 // WithDialFunc sets a custom dial function.
 func WithDialFunc(dial DialFunc) Option {
 	return func(options *options) {
-		options.Dial = protocol.DialFunc(dial)
+		options.Dial = dial
 	}
 }
 
@@ -94,7 +94,7 @@ func WithDialFunc(dial DialFunc) Option {
 //
 // If not used, the default is 5 seconds.
 //
-// DEPRECATED: Connection cancellation is supported via the driver.Connector
+// Deprecated: Connection cancellation is supported via the driver.Connector
 // interface, which is used internally by the stdlib sql package.
 func WithConnectionTimeout(timeout time.Duration) Option {
 	return func(options *options) {
@@ -116,9 +116,9 @@ func WithConnectionBackoffFactor(factor time.Duration) Option {
 // (regardless of the backoff factor) for retrying failed connection attempts.
 //
 // If not used, the default is 1 second.
-func WithConnectionBackoffCap(cap time.Duration) Option {
+func WithConnectionBackoffCap(backoffCap time.Duration) Option {
 	return func(options *options) {
-		options.ConnectionBackoffCap = cap
+		options.ConnectionBackoffCap = backoffCap
 	}
 }
 
@@ -139,7 +139,7 @@ func WithAttemptTimeout(timeout time.Duration) Option {
 
 // WithRetryLimit sets the maximum number of connection retries.
 //
-// If not used, the default is 0 (unlimited retries)
+// If not used, the default is 0 (unlimited retries).
 func WithRetryLimit(limit uint) Option {
 	return func(options *options) {
 		options.RetryLimit = limit
@@ -148,18 +148,18 @@ func WithRetryLimit(limit uint) Option {
 
 // WithContext sets a global cancellation context.
 //
-// DEPRECATED: This API is no a no-op. Users should explicitly pass a context
+// Deprecated: This API is no a no-op. Users should explicitly pass a context
 // if they wish to cancel their requests.
-func WithContext(context context.Context) Option {
+func WithContext(ctx context.Context) Option {
 	return func(options *options) {
-		options.Context = context
+		options.Context = ctx
 	}
 }
 
 // WithContextTimeout sets the default client context timeout for DB.Begin()
 // when no context deadline is provided.
 //
-// DEPRECATED: Users should use db APIs that support contexts if they wish to
+// Deprecated: Users should use db APIs that support contexts if they wish to
 // cancel their requests.
 func WithContextTimeout(timeout time.Duration) Option {
 	return func(options *options) {
@@ -175,7 +175,7 @@ func WithTracing(level client.LogLevel) Option {
 	}
 }
 
-// NewDriver creates a new cowsql driver, which also implements the
+// New creates a new cowsql driver, which also implements the
 // driver.Driver interface.
 func New(store client.NodeStore, options ...Option) (*Driver, error) {
 	o := defaultOptions()
@@ -184,7 +184,7 @@ func New(store client.NodeStore, options ...Option) (*Driver, error) {
 		option(o)
 	}
 
-	driver := &Driver{
+	d := &Driver{
 		log:               o.Log,
 		store:             store,
 		context:           o.Context,
@@ -200,7 +200,7 @@ func New(store client.NodeStore, options ...Option) (*Driver, error) {
 		},
 	}
 
-	return driver, nil
+	return d, nil
 }
 
 // Hold configuration options for a cowsql driver.
@@ -241,6 +241,7 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	if c.driver.connectionTimeout != 0 {
 		var cancel func()
+
 		ctx, cancel = context.WithTimeout(ctx, c.driver.connectionTimeout)
 		defer cancel()
 	}
@@ -255,6 +256,7 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 	}
 
 	var err error
+
 	conn.protocol, err = connector.Connect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cowsql connection: %w", err)
@@ -265,21 +267,22 @@ func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
 
 	protocol.EncodeOpen(&conn.request, c.uri, 0, "volatile")
 
-	if err := conn.protocol.Call(ctx, &conn.request, &conn.response); err != nil {
-		conn.protocol.Close()
+	err = conn.protocol.Call(ctx, &conn.request, &conn.response)
+	if err != nil {
+		_ = conn.protocol.Close()
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	conn.id, err = protocol.DecodeDb(&conn.response)
 	if err != nil {
-		conn.protocol.Close()
+		_ = conn.protocol.Close()
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	return conn, nil
 }
 
-// Driver returns the underlying Driver of the Connector,
+// Driver returns the underlying Driver of the Connector,.
 func (c *Connector) Driver() driver.Driver {
 	return c.driver
 }
@@ -291,6 +294,7 @@ func (d *Driver) OpenConnector(name string) (driver.Connector, error) {
 		uri:    name,
 		driver: d,
 	}
+
 	return connector, nil
 }
 
@@ -315,9 +319,9 @@ func (d *Driver) Open(uri string) (driver.Conn, error) {
 // SetContextTimeout sets the default client timeout when no context deadline
 // is provided.
 //
-// DEPRECATED: This API is no a no-op. Users should explicitly pass a context
+// Deprecated: This API is no a no-op. Users should explicitly pass a context
 // if they wish to cancel their requests, or use the WithContextTimeout option.
-func (d *Driver) SetContextTimeout(timeout time.Duration) {}
+func (*Driver) SetContextTimeout(_ time.Duration) {}
 
 // ErrNoAvailableLeader is returned as root cause of Open() if there's no
 // leader available in the cluster.
@@ -352,10 +356,12 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	if c.tracing != client.LogNone {
 		start = time.Now()
 	}
+
 	err := c.protocol.Call(ctx, &c.request, &c.response)
 	if c.tracing != client.LogNone {
 		c.log(c.tracing, "%.3fs request prepared: %q", time.Since(start).Seconds(), query)
 	}
+
 	if err != nil {
 		return nil, driverError(c.log, err)
 	}
@@ -379,11 +385,12 @@ func (c *Conn) Prepare(query string) (driver.Stmt, error) {
 
 // ExecContext is an optional interface that may be implemented by a Conn.
 func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	if int64(len(args)) > math.MaxUint32 {
+	switch {
+	case int64(len(args)) > math.MaxUint32:
 		return nil, driverError(c.log, fmt.Errorf("too many parameters (%d)", len(args)))
-	} else if len(args) > math.MaxUint8 {
+	case len(args) > math.MaxUint8:
 		protocol.EncodeExecSQLV1(&c.request, uint64(c.id), query, args)
-	} else {
+	default:
 		protocol.EncodeExecSQLV0(&c.request, uint64(c.id), query, args)
 	}
 
@@ -391,15 +398,18 @@ func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	if c.tracing != client.LogNone {
 		start = time.Now()
 	}
+
 	err := c.protocol.Call(ctx, &c.request, &c.response)
 	if c.tracing != client.LogNone {
 		c.log(c.tracing, "%.3fs request exec: %q", time.Since(start).Seconds(), query)
 	}
+
 	if err != nil {
 		return nil, driverError(c.log, err)
 	}
 
 	var result protocol.Result
+
 	result, err = protocol.DecodeResult(&c.response)
 	if err != nil {
 		return nil, driverError(c.log, err)
@@ -415,11 +425,12 @@ func (c *Conn) Query(query string, args []driver.Value) (driver.Rows, error) {
 
 // QueryContext is an optional interface that may be implemented by a Conn.
 func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
-	if int64(len(args)) > math.MaxUint32 {
+	switch {
+	case int64(len(args)) > math.MaxUint32:
 		return nil, driverError(c.log, fmt.Errorf("too many parameters (%d)", len(args)))
-	} else if len(args) > math.MaxUint8 {
+	case len(args) > math.MaxUint8:
 		protocol.EncodeQuerySQLV1(&c.request, uint64(c.id), query, args)
-	} else {
+	default:
 		protocol.EncodeQuerySQLV0(&c.request, uint64(c.id), query, args)
 	}
 
@@ -427,15 +438,18 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	if c.tracing != client.LogNone {
 		start = time.Now()
 	}
+
 	err := c.protocol.Call(ctx, &c.request, &c.response)
 	if c.tracing != client.LogNone {
 		c.log(c.tracing, "%.3fs request query: %q", time.Since(start).Seconds(), query)
 	}
+
 	if err != nil {
 		return nil, driverError(c.log, err)
 	}
 
 	var rows protocol.Rows
+
 	rows, err = protocol.DecodeRows(&c.response)
 	if err != nil {
 		return nil, driverError(c.log, err)
@@ -478,8 +492,9 @@ func (c *Conn) Close() error {
 // This must also check opts.ReadOnly to determine if the read-only value is
 // true to either set the read-only transaction property if supported or return
 // an error if it is not supported.
-func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
-	if _, err := c.ExecContext(ctx, "BEGIN", nil); err != nil {
+func (c *Conn) BeginTx(ctx context.Context, _ driver.TxOptions) (driver.Tx, error) {
+	_, err := c.ExecContext(ctx, "BEGIN", nil)
+	if err != nil {
 		return nil, err
 	}
 
@@ -499,6 +514,7 @@ func (c *Conn) Begin() (driver.Tx, error) {
 
 	if c.contextTimeout > 0 {
 		var cancel func()
+
 		ctx, cancel = context.WithTimeout(context.Background(), c.contextTimeout)
 		defer cancel()
 	}
@@ -516,7 +532,8 @@ type Tx struct {
 func (tx *Tx) Commit() error {
 	ctx := context.Background()
 
-	if _, err := tx.conn.ExecContext(ctx, "COMMIT", nil); err != nil {
+	_, err := tx.conn.ExecContext(ctx, "COMMIT", nil)
+	if err != nil {
 		return driverError(tx.log, err)
 	}
 
@@ -527,7 +544,8 @@ func (tx *Tx) Commit() error {
 func (tx *Tx) Rollback() error {
 	ctx := context.Background()
 
-	if _, err := tx.conn.ExecContext(ctx, "ROLLBACK", nil); err != nil {
+	_, err := tx.conn.ExecContext(ctx, "ROLLBACK", nil)
+	if err != nil {
 		return driverError(tx.log, err)
 	}
 
@@ -554,11 +572,13 @@ func (s *Stmt) Close() error {
 
 	ctx := context.Background()
 
-	if err := s.protocol.Call(ctx, s.request, s.response); err != nil {
+	err := s.protocol.Call(ctx, s.request, s.response)
+	if err != nil {
 		return driverError(s.log, err)
 	}
 
-	if err := protocol.DecodeEmpty(s.response); err != nil {
+	err = protocol.DecodeEmpty(s.response)
+	if err != nil {
 		return driverError(s.log, err)
 	}
 
@@ -567,7 +587,7 @@ func (s *Stmt) Close() error {
 
 // NumInput returns the number of placeholder parameters.
 func (s *Stmt) NumInput() int {
-	return int(s.params)
+	return int(s.params) //nolint:gosec
 }
 
 // ExecContext executes a query that doesn't return rows, such
@@ -575,11 +595,12 @@ func (s *Stmt) NumInput() int {
 //
 // ExecContext must honor the context timeout and return when it is canceled.
 func (s *Stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
-	if int64(len(args)) > math.MaxUint32 {
+	switch {
+	case int64(len(args)) > math.MaxUint32:
 		return nil, driverError(s.log, fmt.Errorf("too many parameters (%d)", len(args)))
-	} else if len(args) > math.MaxUint8 {
+	case len(args) > math.MaxUint8:
 		protocol.EncodeExecV1(s.request, s.db, s.id, args)
-	} else {
+	default:
 		protocol.EncodeExecV0(s.request, s.db, s.id, args)
 	}
 
@@ -587,15 +608,18 @@ func (s *Stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	if s.tracing != client.LogNone {
 		start = time.Now()
 	}
+
 	err := s.protocol.Call(ctx, s.request, s.response)
 	if s.tracing != client.LogNone {
 		s.log(s.tracing, "%.3fs request prepared: %q", time.Since(start).Seconds(), s.sql)
 	}
+
 	if err != nil {
 		return nil, driverError(s.log, err)
 	}
 
 	var result protocol.Result
+
 	result, err = protocol.DecodeResult(s.response)
 	if err != nil {
 		return nil, driverError(s.log, err)
@@ -604,7 +628,7 @@ func (s *Stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	return &Result{result: result}, nil
 }
 
-// Exec executes a query that doesn't return rows, such
+// Exec executes a query that doesn't return rows, such.
 func (s *Stmt) Exec(args []driver.Value) (driver.Result, error) {
 	return s.ExecContext(context.Background(), valuesToNamedValues(args))
 }
@@ -614,11 +638,12 @@ func (s *Stmt) Exec(args []driver.Value) (driver.Result, error) {
 //
 // QueryContext must honor the context timeout and return when it is canceled.
 func (s *Stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
-	if int64(len(args)) > math.MaxUint32 {
+	switch {
+	case int64(len(args)) > math.MaxUint32:
 		return nil, driverError(s.log, fmt.Errorf("too many parameters (%d)", len(args)))
-	} else if len(args) > math.MaxUint8 {
+	case len(args) > math.MaxUint8:
 		protocol.EncodeQueryV1(s.request, s.db, s.id, args)
-	} else {
+	default:
 		protocol.EncodeQueryV0(s.request, s.db, s.id, args)
 	}
 
@@ -626,15 +651,18 @@ func (s *Stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 	if s.tracing != client.LogNone {
 		start = time.Now()
 	}
+
 	err := s.protocol.Call(ctx, s.request, s.response)
 	if s.tracing != client.LogNone {
 		s.log(s.tracing, "%.3fs request prepared: %q", time.Since(start).Seconds(), s.sql)
 	}
+
 	if err != nil {
 		return nil, driverError(s.log, err)
 	}
 
 	var rows protocol.Rows
+
 	rows, err = protocol.DecodeRows(s.response)
 	if err != nil {
 		return nil, driverError(s.log, err)
@@ -643,7 +671,7 @@ func (s *Stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 	return &Rows{ctx: ctx, request: s.request, response: s.response, protocol: s.protocol, rows: rows, log: s.log}, nil
 }
 
-// Query executes a query that may return rows, such as a
+// Query executes a query that may return rows, such as a.
 func (s *Stmt) Query(args []driver.Value) (driver.Rows, error) {
 	return s.QueryContext(context.Background(), valuesToNamedValues(args))
 }
@@ -657,13 +685,13 @@ type Result struct {
 // after, for example, an INSERT into a table with primary
 // key.
 func (r *Result) LastInsertId() (int64, error) {
-	return int64(r.result.LastInsertID), nil
+	return int64(r.result.LastInsertID), nil //nolint:gosec
 }
 
 // RowsAffected returns the number of rows affected by the
 // query.
 func (r *Result) RowsAffected() (int64, error) {
-	return int64(r.result.RowsAffected), nil
+	return int64(r.result.RowsAffected), nil //nolint:gosec
 }
 
 // Rows is an iterator over an executed query's results.
@@ -697,13 +725,14 @@ func (r *Rows) Close() error {
 	}
 
 	// If there is was a single-response result set, we're done.
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return nil
 	}
 
 	// Let's issue an interrupt request and wait until we get an empty
 	// response, signalling that the query was interrupted.
-	if err := r.protocol.Interrupt(r.ctx, r.request, r.response); err != nil {
+	err = r.protocol.Interrupt(r.ctx, r.request, r.response)
+	if err != nil {
 		return driverError(r.log, err)
 	}
 
@@ -718,20 +747,25 @@ func (r *Rows) Close() error {
 func (r *Rows) Next(dest []driver.Value) error {
 	err := r.rows.Next(dest)
 
-	if err == protocol.ErrRowsPart {
-		r.rows.Close()
-		if err := r.protocol.More(r.ctx, r.response); err != nil {
-			return driverError(r.log, err)
+	if errors.Is(err, protocol.ErrRowsPart) {
+		_ = r.rows.Close()
+
+		protoErr := r.protocol.More(r.ctx, r.response)
+		if protoErr != nil {
+			return driverError(r.log, protoErr)
 		}
+
 		rows, err := protocol.DecodeRows(r.response)
 		if err != nil {
 			return driverError(r.log, err)
 		}
+
 		r.rows = rows
+
 		return r.rows.Next(dest)
 	}
 
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		r.consumed = true
 	}
 
@@ -739,7 +773,7 @@ func (r *Rows) Next(dest []driver.Value) error {
 }
 
 // ColumnTypeScanType implements RowsColumnTypeScanType.
-func (r *Rows) ColumnTypeScanType(i int) reflect.Type {
+func (*Rows) ColumnTypeScanType(_ int) reflect.Type {
 	// column := sql.NewColumn(r.rows, i)
 
 	// typ, err := r.protocol.ColumnTypeScanType(context.Background(), column)
@@ -756,6 +790,7 @@ func (r *Rows) ColumnTypeScanType(i int) reflect.Type {
 func (r *Rows) ColumnTypeDatabaseTypeName(i int) string {
 	if r.types == nil {
 		var err error
+
 		r.types, err = r.rows.ColumnTypes()
 		// an error might not matter if we get our types
 		if err != nil && i >= len(r.types) {
@@ -764,9 +799,11 @@ func (r *Rows) ColumnTypeDatabaseTypeName(i int) string {
 			// but we should still inform the user of the failure
 			const msg = "row (%p) error returning column #%d type: %v\n"
 			r.log(client.LogWarn, msg, r, i, err)
+
 			return ""
 		}
 	}
+
 	return r.types[i]
 }
 
@@ -779,11 +816,8 @@ func valuesToNamedValues(args []driver.Value) []driver.NamedValue {
 			Value:   value,
 		}
 	}
-	return namedValues
-}
 
-type unwrappable interface {
-	Unwrap() error
+	return namedValues
 }
 
 // TODO driver.ErrBadConn should not be returned when there's a possibility that
@@ -800,29 +834,27 @@ func driverError(log client.LogFunc, err error) error {
 	errno := syscall.Errno(0)
 	if errors.As(err, &errno) && errno != 0 {
 		log(client.LogDebug, "network connection lost: %v", errno.Error())
+
 		return driver.ErrBadConn
 	}
 
 	netErr := &net.OpError{}
 	if errors.As(err, &netErr) && netErr != nil {
 		log(client.LogDebug, "network connection lost: %v", netErr.Error())
+
 		return driver.ErrBadConn
 	}
 
 	pErr := protocol.ErrRequest{}
 	if errors.As(err, &pErr) {
 		switch pErr.Code {
-		case errIoErrNotLeaderLegacy:
-			fallthrough
-		case errIoErrLeadershipLostLegacy:
-			fallthrough
-		case errIoErrNotLeader:
-			fallthrough
-		case errIoErrLeadershipLost:
+		case errIoErrNotLeaderLegacy, errIoErrLeadershipLostLegacy, errIoErrNotLeader, errIoErrLeadershipLost:
 			log(client.LogDebug, "leadership lost (%d - %s)", pErr.Code, pErr.Description)
+
 			return driver.ErrBadConn
 		case errNotFound:
 			log(client.LogDebug, "not found - potentially after leadership loss (%d - %s)", pErr.Code, pErr.Description)
+
 			return driver.ErrBadConn
 		default:
 			// FIXME: the server side sometimes return SQLITE_OK
@@ -831,10 +863,12 @@ func driverError(log client.LogFunc, err error) error {
 			// connection as bad so the client will retry.
 			if pErr.Code == 0 {
 				log(client.LogWarn, "unexpected error code (%d - %s)", pErr.Code, pErr.Description)
+
 				return driver.ErrBadConn
 			}
+
 			return Error{
-				Code:    int(pErr.Code),
+				Code:    int(pErr.Code), //nolint:gosec
 				Message: pErr.Description,
 			}
 		}
@@ -856,6 +890,7 @@ func driverError(log client.LogFunc, err error) error {
 
 	if errors.Is(err, io.EOF) {
 		log(client.LogDebug, "EOF detected: %v", err)
+
 		return driver.ErrBadConn
 	}
 

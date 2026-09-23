@@ -21,6 +21,7 @@ var (
 
 func assertTrue(t *testing.T, ok bool) {
 	t.Helper()
+
 	if !ok {
 		t.Fatal(ok)
 	}
@@ -28,6 +29,7 @@ func assertTrue(t *testing.T, ok bool) {
 
 func requireNoError(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +37,7 @@ func requireNoError(t *testing.T, err error) {
 
 func requireEqual(t *testing.T, expected, actual any) {
 	t.Helper()
+
 	if expected == nil || actual == nil {
 		if expected != actual {
 			t.Fatal(expected, actual)
@@ -57,6 +60,7 @@ func TestNode_Start(t *testing.T) {
 
 	server, err := bindings.NewNode(context.Background(), 1, "1", dir)
 	requireNoError(t, err)
+
 	defer server.Close()
 
 	err = server.SetBindAddress("@")
@@ -65,9 +69,11 @@ func TestNode_Start(t *testing.T) {
 	err = server.Start()
 	requireNoError(t, err)
 
-	conn, err := net.Dial("unix", server.GetBindAddress())
+	var d net.Dialer
+
+	conn, err := d.DialContext(t.Context(), "unix", server.GetBindAddress())
 	requireNoError(t, err)
-	conn.Close()
+	requireNoError(t, conn.Close())
 
 	assertTrue(t, strings.HasPrefix(server.GetBindAddress(), "@"))
 
@@ -104,6 +110,7 @@ func TestNode_Start_Inet(t *testing.T) {
 
 	server, err := bindings.NewNode(context.Background(), 1, "1", dir)
 	requireNoError(t, err)
+
 	defer server.Close()
 
 	err = server.SetBindAddress("127.0.0.1:9000")
@@ -112,9 +119,11 @@ func TestNode_Start_Inet(t *testing.T) {
 	err = server.Start()
 	requireNoError(t, err)
 
-	conn, err := net.Dial("tcp", server.GetBindAddress())
+	var d net.Dialer
+
+	conn, err := d.DialContext(t.Context(), "tcp", server.GetBindAddress())
 	requireNoError(t, err)
-	conn.Close()
+	requireNoError(t, conn.Close())
 
 	err = server.Stop()
 	requireNoError(t, err)
@@ -203,7 +212,9 @@ func newNode(t *testing.T) (*bindings.Node, func()) {
 func newClient(t *testing.T) net.Conn {
 	t.Helper()
 
-	conn, err := net.Dial("unix", "@test")
+	var d net.Dialer
+
+	conn, err := d.DialContext(t.Context(), "unix", "@test")
 	requireNoError(t, err)
 
 	// Handshake
@@ -231,7 +242,8 @@ func makeClientRequest(t *testing.T, conn net.Conn, kind byte) []byte {
 	requireEqual(t, 8, n)
 
 	// Read the response
-	conn.SetDeadline(time.Now().Add(250 * time.Millisecond))
+	requireNoError(t, conn.SetDeadline(time.Now().Add(250*time.Millisecond)))
+
 	buf := make([]byte, 64)
 	_, err = conn.Read(buf)
 	requireNoError(t, err)
@@ -243,7 +255,7 @@ func makeClientRequest(t *testing.T, conn net.Conn, kind byte) []byte {
 func newDir(t *testing.T) (string, func()) {
 	t.Helper()
 
-	dir, err := os.MkdirTemp("", "cowsql-replication-test-")
+	dir, err := os.MkdirTemp("", "cowsql-replication-test-") //nolint:usetesting
 	assertNoError(t, err)
 
 	cleanup := func() {

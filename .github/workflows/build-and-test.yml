@@ -9,9 +9,15 @@ jobs:
       fail-fast: false
       matrix:
         go:
-          - 1.23.x
+          - oldstable
+          - stable
         os:
           - ubuntu-22.04
+          - ubuntu-24.04
+          - ubuntu-26.04
+        architecture:
+          - amd64
+          - arm64
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout code
@@ -22,11 +28,16 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
 
-    - name: Setup dependencies
+    - name: Setup repositories
+      if: matrix.os != 'ubuntu-26.04'
       run: |
         sudo add-apt-repository ppa:cowsql/main -y
         sudo apt update
-        sudo apt install -y golint libsqlite3-dev libuv1-dev liblz4-dev libraft-dev libcowsql-dev
+
+    - name: Setup dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y libsqlite3-dev libuv1-dev liblz4-dev libraft-dev libcowsql-dev
         go get github.com/go-playground/overalls
 
     - name: Build & Test
@@ -36,7 +47,6 @@ jobs:
         go version
         go get -t -tags libsqlite3 ./...
         go vet -tags libsqlite3 ./...
-        golint
         export GO_COWSQL_MULTITHREAD=1
         go test -v -race -coverprofile=coverage.out ./...
         go test -v -tags nosqlite3 ./...

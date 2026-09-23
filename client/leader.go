@@ -23,12 +23,13 @@ func FindLeader(ctx context.Context, store NodeStore, options ...Option) (*Clien
 		Dial: o.DialFunc,
 	}
 	connector := protocol.NewConnector(0, store, config, o.LogFunc)
-	protocol, err := connector.Connect(ctx)
+
+	p, err := connector.Connect(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	client := &Client{protocol: protocol}
+	client := &Client{protocol: p}
 
 	return client, nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -9,9 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cowsql/go-cowsql/app"
 	"github.com/cowsql/go-cowsql/benchmark"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -47,21 +49,24 @@ func signalChannel() chan os.Signal {
 	signal.Notify(ch, syscall.SIGINT)
 	signal.Notify(ch, syscall.SIGQUIT)
 	signal.Notify(ch, syscall.SIGTERM)
+
 	return ch
 }
 
 func main() {
-	var cluster *[]string
-	var clusterTimeout int
-	var db string
-	var dir string
-	var driver bool
-	var duration int
-	var join *[]string
-	var kvKeySize int
-	var kvValueSize int
-	var workers int
-	var workload string
+	var (
+		cluster        *[]string
+		clusterTimeout int
+		db             string
+		dir            string
+		driver         bool
+		duration       int
+		join           *[]string
+		kvKeySize      int
+		kvValueSize    int
+		workers        int
+		workload       string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "cowsql-benchmark",
@@ -69,7 +74,9 @@ func main() {
 		Long:  docString,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := filepath.Join(dir, db)
-			if err := os.MkdirAll(dir, 0o755); err != nil {
+
+			err := os.MkdirAll(dir, 0o755)
+			if err != nil {
 				return fmt.Errorf("can't create %s: %w", dir, err)
 			}
 
@@ -80,27 +87,30 @@ func main() {
 
 			readyCtx, cancel := context.WithTimeout(context.Background(), time.Duration(clusterTimeout)*time.Second)
 			defer cancel()
-			if err := app.Ready(readyCtx); err != nil {
+
+			err = app.Ready(readyCtx)
+			if err != nil {
 				return fmt.Errorf("App not ready in time: %w", err)
 			}
 
 			ch := signalChannel()
+
 			if !driver {
-				fmt.Println("Benchmark client ready. Send signal to abort or when done.")
-				select {
-				case <-ch:
-					return nil
-				}
+				fmt.Println("Benchmark client ready. Send signal to abort or when done.") //nolint:forbidigo
+				<-ch
+
+				return nil
 			}
 
 			if len(*cluster) == 0 {
-				return fmt.Errorf("driver node, `--cluster` flag must be provided")
+				return errors.New("driver node, `--cluster` flag must be provided")
 			}
 
 			db, err := app.Open(context.Background(), "benchmark")
 			if err != nil {
 				return err
 			}
+
 			db.SetMaxOpenConns(500)
 			db.SetMaxIdleConns(500)
 
@@ -120,12 +130,14 @@ func main() {
 				return err
 			}
 
-			if err := bm.Run(ch); err != nil {
+			err = bm.Run(ch)
+			if err != nil {
 				return err
 			}
 
-			db.Close()
-			app.Close()
+			_ = db.Close()
+			_ = app.Close()
+
 			return nil
 		},
 	}
@@ -144,8 +156,13 @@ func main() {
 	flags.IntVar(&kvKeySize, "key-size", defaultKvKeySize, "Size of the KV keys in bytes.")
 	flags.IntVar(&kvValueSize, "value-size", defaultKvValueSize, "Size of the KV values in bytes.")
 
-	cmd.MarkFlagRequired("db")
-	if err := cmd.Execute(); err != nil {
+	err := cmd.MarkFlagRequired("db")
+	if err != nil {
+		os.Exit(1)
+	}
+
+	err = cmd.Execute()
+	if err != nil {
 		os.Exit(1)
 	}
 }

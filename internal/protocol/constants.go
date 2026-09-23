@@ -6,20 +6,20 @@ const VersionOne = uint64(1)
 // VersionLegacy is the pre 1.0 cowsql server protocol version.
 const VersionLegacy = uint64(0x86104dd760433fe5)
 
-// Cluster response formats
+// Cluster response formats.
 const (
 	ClusterFormatV0 = 0
 	ClusterFormatV1 = 1
 )
 
-// Node roles
+// Node roles.
 const (
 	Voter   = NodeRole(0)
 	StandBy = NodeRole(1)
 	Spare   = NodeRole(2)
 )
 
-// SQLite datatype codes
+// SQLite datatype codes.
 const (
 	Integer = 1
 	Float   = 2
@@ -58,7 +58,7 @@ const (
 	RequestWeight    = 19
 )
 
-// Formats
+// Formats.
 const (
 	RequestDescribeFormatV0 = 0
 )
@@ -120,6 +120,7 @@ func requestDesc(code uint8) string {
 	case RequestDescribe:
 		return "describe"
 	}
+
 	return "unknown"
 }
 
@@ -149,5 +150,6 @@ func responseDesc(code uint8) string {
 	case ResponseMetadata:
 		return "metadata"
 	}
+
 	return "unknown"
 }

@@ -12,6 +12,7 @@ import (
 
 func requireNoError(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,6 +20,7 @@ func requireNoError(t *testing.T, err error) {
 
 func assertEqual(t *testing.T, expected, actual any) {
 	t.Helper()
+
 	if expected == nil || actual == nil {
 		if expected != actual {
 			t.Fatal(expected, actual)
@@ -180,7 +182,8 @@ func newProtocol(t *testing.T) (*protocol.Protocol, func()) {
 	requireNoError(t, err)
 
 	cleanup := func() {
-		client.Close()
+		_ = client.Close()
+
 		serverCleanup()
 	}
 
@@ -189,6 +192,8 @@ func newProtocol(t *testing.T) (*protocol.Protocol, func()) {
 
 // Perform a client call.
 func makeCall(t *testing.T, p *protocol.Protocol, request, response *protocol.Message) {
+	t.Helper()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
 
