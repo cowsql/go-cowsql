@@ -957,6 +957,8 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		}
 	}()
 
+	startTime := time.Now()
+
 	raftNodes, err := g.CurrentRaftNodes(context.TODO())
 	if err != nil {
 		if errors.Is(err, membership.ErrNotLeader) {
@@ -1020,8 +1022,6 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 
 		return
 	}
-
-	startTime := time.Now()
 
 	heartbeatInterval := g.HeartbeatInterval()
 
@@ -1127,6 +1127,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 				nodesByAddress[n.Address] = struct{}{}
 			}
 
+			now := time.Now()
 			for _, node := range hbState.Members {
 				if !node.Updated {
 					// If member has not been updated during this heartbeat round it means
@@ -1140,7 +1141,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 
 				_, ok := nodesByAddress[node.Address]
 				if ok {
-					err := tx.SetNodeHeartbeat(ctx, node.Address, node.LastHeartbeat)
+					err := tx.SetNodeHeartbeat(ctx, node.Address, now)
 					if err != nil {
 						return fmt.Errorf("Failed updating heartbeat time for member %q: %w", node.Address, err)
 					}
