@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cowsql/go-cowsql/client"
@@ -208,6 +209,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		if version != api.COWSQLVersion {
 			if version > api.COWSQLVersion {
 				go g.triggerUpdateOnce()
+
 				http.Error(w, "503 unsupported cowsql version", http.StatusServiceUnavailable)
 			} else {
 				http.Error(w, "426 cowsql version too old ", http.StatusUpgradeRequired)
@@ -838,8 +840,10 @@ func (g *gateway) HeartbeatRestart() bool {
 // cluster, as configured in the raft log. It returns an error if this node is
 // not the leader.
 func (g *gateway) CurrentRaftNodes(ctx context.Context) ([]db.RaftNode, error) {
+	runlock := sync.OnceFunc(g.lock.RUnlock)
 	g.lock.RLock()
-	defer g.lock.RUnlock()
+
+	defer runlock()
 
 	if g.info == nil || g.info.Role != db.RaftVoter {
 		return nil, membership.ErrNotLeader
@@ -883,6 +887,9 @@ func (g *gateway) CurrentRaftNodes(ctx context.Context) ([]db.RaftNode, error) {
 		raftNode := db.RaftNode{ID: servers[i].ID, Address: servers[i].Address, Role: servers[i].Role}
 		raftNodes = append(raftNodes, raftNode)
 	}
+
+	// Release the lock to avoid lock contention with heartbeats before beginning a transaction, which can deadlock on role handover.
+	runlock()
 
 	// Get the names of the raft nodes from the global database.
 	if g.cluster != nil {
@@ -1128,6 +1135,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 			}
 
 			now := time.Now()
+
 			for _, node := range hbState.Members {
 				if !node.Updated {
 					// If member has not been updated during this heartbeat round it means
@@ -1162,6 +1170,24 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		slog.Warn("Aborting heartbeat round", "err", ctxErr, "mode", modeStr)
 
 		return
+	}
+
+	if hbState.FullStateList {
+		if g.hasMemberStateChanged(hbState.Members) {
+			slog.Info("Cluster member states changed, updating authentication")
+
+			err := g.State().UpdateAuthenticator(context.TODO())
+			if err != nil {
+				slog.Error("Failed to update authenticator", "err", err)
+
+				return
+			}
+
+			g.lastNodeList = make(map[int64]heartbeatMember, len(hbState.Members))
+			for id, member := range hbState.Members {
+				g.lastNodeList[id] = heartbeatMember{Address: member.Address, Online: member.Online}
+			}
+		}
 	}
 
 	// If full node state was sent and node refresh task is specified.

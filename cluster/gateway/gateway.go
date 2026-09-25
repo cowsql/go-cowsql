@@ -91,6 +91,13 @@ type gateway struct {
 
 	// State function.
 	state state.State
+
+	lastNodeList map[int64]heartbeatMember
+}
+
+type heartbeatMember struct {
+	Address string
+	Online  bool
 }
 
 // Initialize the gateway, creating a new raft factory and gRPC server (if this
@@ -494,4 +501,30 @@ func (g *gateway) triggerUpdateOnce() {
 		g.upgradeTriggered = false
 		g.upgradeLock.Unlock()
 	}
+}
+
+// hasMemberStateChanged returns true if the number of members, their addresses or state has changed.
+func (g *gateway) hasMemberStateChanged(heartbeat map[int64]db.HeartbeatMember) bool {
+	// No previous heartbeat data.
+	if g.lastNodeList == nil {
+		return true
+	}
+
+	// Member count has changed.
+	if len(g.lastNodeList) != len(heartbeat) {
+		return true
+	}
+
+	// Check for member address or state changes.
+	for lastMemberID, lastMember := range g.lastNodeList {
+		if heartbeat[lastMemberID].Address != lastMember.Address {
+			return true
+		}
+
+		if heartbeat[lastMemberID].Online != lastMember.Online {
+			return true
+		}
+	}
+
+	return false
 }

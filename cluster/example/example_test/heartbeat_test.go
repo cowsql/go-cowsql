@@ -235,7 +235,7 @@ func (f *heartbeatFixture) node(opts ...options.Option) (state.State, cluster.Ga
 	gateway := newGateway(f.t, node, serverCert, s, serverCertFunc, nil, opts...)
 	f.cleanups = append(f.cleanups, func() { _ = gateway.ShutdownServer() })
 
-	for path, handler := range gateway.HandlerFuncs(example.Authorizer(gateway.NetworkCert, gateway.ServerCert, trustedCerts)) {
+	for path, handler := range gateway.HandlerFuncs(example.Authenticator(gateway.NetworkCert, gateway.ServerCert, trustedCerts)) {
 		mux.HandleFunc(path, handler)
 	}
 

@@ -7,9 +7,9 @@ default: build
 
 .PHONY: build
 build:
-mkdir -p ./bin/
 ifeq "$(TAG_SQLITE3)" ""
 	@echo "Missing cowsql, run \"make deps\" to setup."
 	exit 1
 endif
+	mkdir -p ./bin/
 	CGO_ENABLED=1 CC="$(CC)" CGO_LDFLAGS_ALLOW="$(CGO_LDFLAGS_ALLOW)" $(GO) build -o ./bin/cluster -v -tags "$(TAG_SQLITE3)" $(DEBUG) ./cmd

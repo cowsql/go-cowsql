@@ -48,8 +48,8 @@ cluster daemon --address 10.0.0.101:8003 --name c3 --dir /tmp/cowsql-c3
 cluster client bootstrap --address 10.0.0.101:8001
 
 # Join an existing cluster from an uninitialized daemon:
-cluster client bootstrap --address 10.0.0.101:8002 --target 10.0.0.101:8001
-cluster client bootstrap --address 10.0.0.101:8003 --target 10.0.0.101:8001
+cluster client join --address 10.0.0.101:8002 --target 10.0.0.101:8001
+cluster client join --address 10.0.0.101:8003 --target 10.0.0.101:8001
 
 # List cluster members:
 cluster client list --address 10.0.0.101:8002

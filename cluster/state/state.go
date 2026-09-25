@@ -18,8 +18,8 @@ type State interface {
 	// ClusterAddress returns the address used for intra-cluster communication.
 	ClusterAddress() string
 
-	// UpdateAuthorizer triggers an update to the handler func authorizer.
-	UpdateAuthorizer(ctx context.Context) error
+	// UpdateAuthenticator triggers an update to the handler func authenticator.
+	UpdateAuthenticator(ctx context.Context) error
 
 	// HasListener returns whether any network listeners are active.
 	HasListener(ctx context.Context) error
