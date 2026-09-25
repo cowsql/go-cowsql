@@ -44,8 +44,8 @@ func TestGateway_Single(t *testing.T) {
 	gateway := newGateway(t, node, cert, s, serverCertFunc, nil)
 	defer func() { _ = gateway.ShutdownServer() }()
 
-	authorizer := example.Authorizer(gateway.NetworkCert, gateway.ServerCert, trustedCerts)
-	handlerFuncs := gateway.HandlerFuncs(authorizer)
+	authenticator := example.Authenticator(gateway.NetworkCert, gateway.ServerCert, trustedCerts)
+	handlerFuncs := gateway.HandlerFuncs(authenticator)
 	require.Len(t, handlerFuncs, 1)
 
 	for endpoint, f := range handlerFuncs {
@@ -109,8 +109,8 @@ func TestGateway_SingleWithNetworkAddress(t *testing.T) {
 	gateway := newGateway(t, node, cert, s, serverCertFunc, nil)
 	defer func() { _ = gateway.ShutdownServer() }()
 
-	authorizer := example.Authorizer(gateway.NetworkCert, gateway.ServerCert, trustedCerts)
-	for path, handler := range gateway.HandlerFuncs(authorizer) {
+	authenticator := example.Authenticator(gateway.NetworkCert, gateway.ServerCert, trustedCerts)
+	for path, handler := range gateway.HandlerFuncs(authenticator) {
 		mux.HandleFunc(path, handler)
 	}
 
@@ -153,8 +153,8 @@ func TestGateway_NetworkAuth(t *testing.T) {
 	gateway := newGateway(t, node, cert, s, serverCertFunc, nil)
 	defer func() { _ = gateway.ShutdownServer() }()
 
-	authorizer := example.Authorizer(gateway.NetworkCert, gateway.ServerCert, trustedCerts)
-	for path, handler := range gateway.HandlerFuncs(authorizer) {
+	authenticator := example.Authenticator(gateway.NetworkCert, gateway.ServerCert, trustedCerts)
+	for path, handler := range gateway.HandlerFuncs(authenticator) {
 		mux.HandleFunc(path, handler)
 	}
 
@@ -167,7 +167,7 @@ func TestGateway_NetworkAuth(t *testing.T) {
 
 	client := &http.Client{Transport: &http.Transport{TLSClientConfig: config}}
 
-	for path := range gateway.HandlerFuncs(authorizer) {
+	for path := range gateway.HandlerFuncs(authenticator) {
 		url := fmt.Sprintf("https://%s%s", address, path)
 		response, err := client.Head(url) //nolint:noctx
 		require.NoError(t, err)

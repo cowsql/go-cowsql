@@ -97,7 +97,7 @@ func Bootstrap(gateway cluster.Gateway, serverName string) error {
 
 	// Reload the trusted certificate cache to enable the certificate we just added to the local trust store
 	// to be used when validating endpoint connections. This will allow Cowsql to connect to ourselves.
-	err = s.UpdateAuthorizer(context.TODO())
+	err = s.UpdateAuthenticator(context.TODO())
 	if err != nil {
 		return err
 	}
@@ -262,7 +262,7 @@ func Accept(gateway cluster.Gateway, serverCert *x509.Certificate, name, address
 
 	// Reload the trusted certificate cache to enable the certificate we just added to the local trust store
 	// to be used when validating endpoint connections. This will allow Cowsql to connect to ourselves.
-	err = gateway.State().UpdateAuthorizer(context.TODO())
+	err = gateway.State().UpdateAuthenticator(context.TODO())
 	if err != nil {
 		return nil, err
 	}

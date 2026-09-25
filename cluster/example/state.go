@@ -93,9 +93,9 @@ func (s *State) SetClusterCertificate(i tls.CertInfo) (tls.CertInfo, error) {
 	return cert, nil
 }
 
-// UpdateAuthorizer implements [state.State].
+// UpdateAuthenticator implements [state.State].
 // Update the cache of cluster member server certificates used for TLS authentication of the cowsql connection API.
-func (s *State) UpdateAuthorizer(ctx context.Context) error {
+func (s *State) UpdateAuthenticator(ctx context.Context) error {
 	if s.refreshCertFunc != nil {
 		s.refreshCertFunc(ctx)
 	}

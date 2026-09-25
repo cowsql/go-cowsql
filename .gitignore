@@ -7,3 +7,4 @@ cmd/cowsql-benchmark/cowsql-benchmark
 ./cowsql-benchmark
 profile.coverprofile
 overalls.coverprofile
+cluster/example/bin

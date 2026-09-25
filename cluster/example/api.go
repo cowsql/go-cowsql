@@ -134,7 +134,7 @@ func (d *Daemon) apiHandlers() *http.ServeMux {
 		_ = json.NewEncoder(w).Encode(data)
 	})
 
-	for p, f := range d.gateway.HandlerFuncs(Authorizer(d.gateway.NetworkCert, d.gateway.ServerCert, d.getTrustedCerts)) {
+	for p, f := range d.gateway.HandlerFuncs(Authenticator(d.gateway.NetworkCert, d.gateway.ServerCert, d.getTrustedCerts)) {
 		serveMux.HandleFunc(p, f)
 	}
 
@@ -408,8 +408,8 @@ func (d *Daemon) changeMemberRoles(ctx context.Context, address string, nodes []
 	return err
 }
 
-// Authorizer validates that the connection is from a trusted server.
-func Authorizer(networkCertFunc, serverCertFunc func() cowsqltls.CertInfo, getTrustedCerts func() map[string]x509.Certificate) func(w http.ResponseWriter, r *http.Request) bool {
+// Authenticator validates that the connection is from a trusted server.
+func Authenticator(networkCertFunc, serverCertFunc func() cowsqltls.CertInfo, getTrustedCerts func() map[string]x509.Certificate) func(w http.ResponseWriter, r *http.Request) bool {
 	return func(w http.ResponseWriter, r *http.Request) bool {
 		certs := getTrustedCerts()
 		if !exampletls.CheckCert(r, networkCertFunc(), serverCertFunc(), certs) {
