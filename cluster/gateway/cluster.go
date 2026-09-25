@@ -209,6 +209,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		if version != api.COWSQLVersion {
 			if version > api.COWSQLVersion {
 				go g.triggerUpdateOnce()
+
 				http.Error(w, "503 unsupported cowsql version", http.StatusServiceUnavailable)
 			} else {
 				http.Error(w, "426 cowsql version too old ", http.StatusUpgradeRequired)
@@ -1134,6 +1135,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 			}
 
 			now := time.Now()
+
 			for _, node := range hbState.Members {
 				if !node.Updated {
 					// If member has not been updated during this heartbeat round it means
@@ -1168,6 +1170,24 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		slog.Warn("Aborting heartbeat round", "err", ctxErr, "mode", modeStr)
 
 		return
+	}
+
+	if hbState.FullStateList {
+		if g.hasMemberStateChanged(hbState.Members) {
+			slog.Info("Cluster member states changed, updating authentication")
+
+			err := g.State().UpdateAuthenticator(context.TODO())
+			if err != nil {
+				slog.Error("Failed to update authenticator", "err", err)
+
+				return
+			}
+
+			g.lastNodeList = make(map[int64]heartbeatMember, len(hbState.Members))
+			for id, member := range hbState.Members {
+				g.lastNodeList[id] = heartbeatMember{Address: member.Address, Online: member.Online}
+			}
+		}
 	}
 
 	// If full node state was sent and node refresh task is specified.
