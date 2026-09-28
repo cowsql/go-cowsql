@@ -8,13 +8,6 @@ import (
 // Option to be passed to NewGateway to customize the resulting instance.
 type Option func(*Options)
 
-// LogLevel sets the logging level for messages emitted by cowsql and raft.
-func LogLevel(level string) Option {
-	return func(options *Options) {
-		options.logLevel = level
-	}
-}
-
 // Logger sets the logger for messages emitted by go-cowsql.
 func Logger(logger *slog.Logger) Option {
 	return func(options *Options) {
@@ -94,7 +87,6 @@ func PreUpdateCheck(f func() (func() error, error)) Option {
 func NewOptions() *Options {
 	return &Options{
 		latency:                 1.0,
-		logLevel:                "ERROR",
 		logger:                  slog.Default(),
 		databaseEndpoint:        "/internal/database",
 		defaultOfflineThreshold: 20 * time.Second,
@@ -109,9 +101,8 @@ func NewOptions() *Options {
 
 // Options represents the configurable options fields.
 type Options struct {
-	latency  float64
-	logLevel string
-	logger   *slog.Logger
+	latency float64
+	logger  *slog.Logger
 
 	databaseEndpoint string
 
@@ -138,11 +129,6 @@ type Options struct {
 // in-memory).
 func (o *Options) Latency() float64 {
 	return o.latency
-}
-
-// LogLevel is the logging level for messages emitted by cowsql and raft.
-func (o *Options) LogLevel() string {
-	return o.logLevel
 }
 
 // Logger returns the logger in use.
