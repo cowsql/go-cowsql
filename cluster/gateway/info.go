@@ -2,11 +2,11 @@ package gateway
 
 import (
 	"context"
-	"log/slog"
 	"os"
 
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 	"github.com/cowsql/go-cowsql/cluster/internal/util/file"
 )
 
@@ -38,7 +38,7 @@ func loadInfo(database db.Node) (*db.RaftNode, error) {
 		info.Address = "1"
 	}
 
-	slog.Info("Starting database node", "id", info.ID, "local", info.Address, "role", info.Role)
+	logger.Log().Info("Starting database node", "id", info.ID, "local", info.Address, "role", info.Role)
 
 	// Data directory
 	dir := database.GlobalDatabaseDir()

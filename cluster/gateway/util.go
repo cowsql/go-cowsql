@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"runtime"
 	"time"
+
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 )
 
 // writeJSON encodes the body as JSON and sends it back to the client
@@ -29,7 +31,7 @@ func closeOrLog(msg string, timeout time.Duration, closer func() error) {
 	go func() {
 		err := closer()
 		if err != nil {
-			slog.Debug("Failed to run closer", slog.String("message", msg), slog.Any("error", err))
+			logger.Log().Debug("Failed to run closer", slog.String("message", msg), slog.Any("error", err))
 		}
 
 		close(done)
@@ -40,6 +42,6 @@ func closeOrLog(msg string, timeout time.Duration, closer func() error) {
 	case <-time.After(timeout):
 		buf := make([]byte, 1024*1024)
 		n := runtime.Stack(buf, true)
-		slog.Warn("Timed out running closer", slog.String("timeout", timeout.String()), slog.String("message", msg), slog.String("goroutines", string(buf[:n])))
+		logger.Log().Warn("Timed out running closer", slog.String("timeout", timeout.String()), slog.String("message", msg), slog.String("goroutines", string(buf[:n])))
 	}
 }

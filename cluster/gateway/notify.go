@@ -5,13 +5,13 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/cowsql/go-cowsql/cluster"
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 	"github.com/cowsql/go-cowsql/cluster/tls"
 )
 
@@ -88,7 +88,7 @@ func (g *gateway) NewNotifier(ctx context.Context, networkCert tls.CertInfo, ser
 		var mu sync.Mutex
 
 		for _, address := range peers {
-			slog.Debug("Notify node of state changes", "address", address)
+			logger.Log().Debug("Notify node of state changes", "address", address)
 			go func(address string) {
 				defer wg.Done()
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/cowsql/go-cowsql"
@@ -12,6 +11,7 @@ import (
 	"github.com/cowsql/go-cowsql/cluster"
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 	"github.com/cowsql/go-cowsql/cluster/logging"
 )
 
@@ -217,7 +217,7 @@ func RemoveRaftNode(gateway cluster.Gateway, address string) error {
 	defer func() {
 		err := cowsqlClient.Close()
 		if err != nil {
-			slog.Warn("Failed to close client", "err", err)
+			logger.Log().Warn("Failed to close client", "err", err)
 		}
 	}()
 

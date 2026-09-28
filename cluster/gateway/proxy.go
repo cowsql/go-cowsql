@@ -3,10 +3,10 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
 	"time"
 
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 	"github.com/cowsql/go-cowsql/cluster/internal/util/file"
 	"github.com/cowsql/go-cowsql/cluster/internal/util/tcp"
 )
@@ -53,7 +53,7 @@ func runCowsqlProxy(stopCh chan struct{}, bindAddress string, acceptCh chan net.
 // Copies data between a remote TLS network connection and a local unix socket.
 // Accepts name argument that can be used to identify the connection in the logs.
 func cowsqlProxy(name string, stopCh chan struct{}, remote net.Conn, local net.Conn) {
-	l := slog.With("name", name, "local", remote.LocalAddr(), "remote", remote.RemoteAddr())
+	l := logger.Log().With("name", name, "local", remote.LocalAddr(), "remote", remote.RemoteAddr())
 
 	l.Debug("Cowsql proxy started")
 	defer l.Debug("Cowsql proxy stopped")

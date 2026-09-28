@@ -11,6 +11,7 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
 	"github.com/cowsql/go-cowsql/cluster/heartbeat"
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 )
 
 // ChangeMemberRoleFunc is called by RebalanceMembersHook to trigger a role assignment for the cluster member with the given address.
@@ -61,20 +62,20 @@ func RebalanceMembersHook(ctx context.Context, gateway cluster.Gateway, localClu
 		// replace them with spare ones. Also, if we don't have enough voters or standbys, let's see if we
 		// can upgrade some member.
 		if isDegraded || onlineVoters != int(maxVoters) || onlineStandbys != int(maxStandBy) || hasMustDemoteRoles {
-			slog.Debug("Rebalancing member roles in heartbeat", slog.String("local_address", localClusterAddress))
+			logger.Log().Debug("Rebalancing member roles in heartbeat", slog.String("local_address", localClusterAddress))
 
 			err := rebalanceMemberRoles(ctx, gateway, unavailableMembers, alwaysDemoteRoles, changeMemberRoleFunc)
 			if err != nil && !errors.Is(err, ErrNotLeader) {
-				slog.Warn("Could not rebalance cluster member roles", slog.Any("err", err), slog.String("local_address", localClusterAddress))
+				logger.Log().Warn("Could not rebalance cluster member roles", slog.Any("err", err), slog.String("local_address", localClusterAddress))
 			}
 		}
 
 		if hasNodesNotPartOfRaft {
-			slog.Debug("Upgrading members without raft role in heartbeat", slog.String("local_address", localClusterAddress))
+			logger.Log().Debug("Upgrading members without raft role in heartbeat", slog.String("local_address", localClusterAddress))
 
 			err := upgradeNodesWithoutRaftRole(ctx, gateway, gateway.Cluster())
 			if err != nil && !errors.Is(err, ErrNotLeader) {
-				slog.Warn("Failed upgrading raft roles:", slog.Any("err", err), slog.String("local_address", localClusterAddress))
+				logger.Log().Warn("Failed upgrading raft roles:", slog.Any("err", err), slog.String("local_address", localClusterAddress))
 			}
 		}
 	}
@@ -107,7 +108,7 @@ again:
 
 		reachable := cluster.HasConnectivity(gateway.NetworkCert(), gateway.ServerCert(), address, gateway.Options().RestrictTLS())
 
-		log := slog.With(slog.String("name", member.Name), slog.Int("role", int(member.Role)))
+		log := logger.Log().With(slog.String("name", member.Name), slog.Int("role", int(member.Role)))
 		if member.Role != db.RaftSpare {
 			if !reachable {
 				// The server isn't ready to be promoted yet, try again next time.
