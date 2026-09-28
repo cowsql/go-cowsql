@@ -337,7 +337,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 				return
 			}
 
-			_ = writeJSON(w, map[string]string{"leader": leader}, nil)
+			_ = writeJSON(w, map[string]string{"leader": leader})
 
 			return
 		}
