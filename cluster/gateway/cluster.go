@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -22,6 +21,7 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
 	"github.com/cowsql/go-cowsql/cluster/heartbeat"
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 	"github.com/cowsql/go-cowsql/cluster/internal/response"
 	"github.com/cowsql/go-cowsql/cluster/logging"
 	"github.com/cowsql/go-cowsql/cluster/membership"
@@ -53,6 +53,8 @@ func NewGateway(shutdownCtx context.Context, db db.Node, networkCert tls.CertInf
 		store:       &cowsqlNodeStore{},
 		state:       state,
 	}
+
+	logger.SetLogger(g.options.Logger())
 
 	err := g.init(false)
 	if err != nil {
