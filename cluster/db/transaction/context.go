@@ -5,8 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 	"sync"
+
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 )
 
 type tcKey struct{}
@@ -142,7 +143,7 @@ func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(co
 			if reason != nil {
 				err := Retry(context.Background(), maxRetries, func(_ context.Context) error { return trans.Rollback() })
 				if err != nil {
-					slog.Warn("Failed to rollback transaction after error", "reason", reason, "err", err)
+					logger.Log().Warn("Failed to rollback transaction after error", "reason", reason, "err", err)
 				}
 			}
 

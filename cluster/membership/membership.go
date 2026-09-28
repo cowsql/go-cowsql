@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"log/slog"
 	"maps"
 	"os"
 	"slices"
@@ -19,6 +18,7 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
 	"github.com/cowsql/go-cowsql/cluster/heartbeat"
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 	"github.com/cowsql/go-cowsql/cluster/logging"
 	cowsqltls "github.com/cowsql/go-cowsql/cluster/tls"
 )
@@ -381,7 +381,7 @@ func Join[T any](gateway cluster.Gateway, networkKeypair tls.Certificate, name s
 		return errors.New("Joining member info not found")
 	}
 
-	slog.Info("Joining cowsql raft cluster", "id", info.ID, "local", info.Address, "role", info.Role)
+	logger.Log().Info("Joining cowsql raft cluster", "id", info.ID, "local", info.Address, "role", info.Role)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -398,11 +398,11 @@ func Join[T any](gateway cluster.Gateway, networkKeypair tls.Certificate, name s
 	defer func() {
 		err := cowsqlClient.Close()
 		if err != nil {
-			slog.Warn("Failed to close client")
+			logger.Log().Warn("Failed to close client")
 		}
 	}()
 
-	slog.Info("Adding node to cluster", "id", info.ID, "local", info.Address, "role", info.Role)
+	logger.Log().Info("Adding node to cluster", "id", info.ID, "local", info.Address, "role", info.Role)
 
 	ctx, cancel = context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -436,7 +436,7 @@ func Join[T any](gateway cluster.Gateway, networkKeypair tls.Certificate, name s
 	// connection, so new queries will be executed over the new gRPC
 	// network connection. Also, update the storage_pools and networks
 	// tables with our local configuration.
-	slog.Info("Migrate local data to cluster database")
+	logger.Log().Info("Migrate local data to cluster database")
 
 	err = transaction.DoExclusive(context.TODO(), gateway.Cluster(), func(ctx context.Context) error {
 		tx := gateway.Cluster()
@@ -518,7 +518,7 @@ func NotifyHeartbeat(gateway cluster.Gateway) {
 		return nil
 	})
 	if err != nil {
-		slog.Warn("Failed to get current raft members", "err", err, "local", localClusterAddress)
+		logger.Log().Warn("Failed to get current raft members", "err", err, "local", localClusterAddress)
 
 		return
 	}
@@ -532,7 +532,7 @@ func NotifyHeartbeat(gateway cluster.Gateway) {
 		return err
 	})
 	if err != nil {
-		slog.Warn("Failed to get current cluster members", "err", err, "local", localClusterAddress)
+		logger.Log().Warn("Failed to get current cluster members", "err", err, "local", localClusterAddress)
 
 		return
 	}
@@ -569,7 +569,7 @@ func NotifyHeartbeat(gateway cluster.Gateway) {
 				return nil
 			})
 			if err != nil {
-				slog.Warn("Failed to get current cluster members", "err", err)
+				logger.Log().Warn("Failed to get current cluster members", "err", err)
 
 				return
 			}
@@ -594,7 +594,7 @@ func NotifyHeartbeat(gateway cluster.Gateway) {
 	})
 
 	// Notify all other members of the change in membership.
-	slog.Info("Notifying cluster members of local role change")
+	logger.Log().Info("Notifying cluster members of local role change")
 
 	for _, member := range members {
 		if member.Address == localClusterAddress {
@@ -799,7 +799,7 @@ func Assign(gateway cluster.Gateway, nodes []db.RaftNode) error {
 
 	transactor = transaction.Do
 
-	slog.Info("Changing local database role", "role", info.Role)
+	logger.Log().Info("Changing local database role", "role", info.Role)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -812,7 +812,7 @@ func Assign(gateway cluster.Gateway, nodes []db.RaftNode) error {
 	defer func() {
 		err := cowsqlClient.Close()
 		if err != nil {
-			slog.Warn("Failed to close client")
+			logger.Log().Warn("Failed to close client")
 		}
 	}()
 
@@ -925,7 +925,7 @@ func Assign(gateway cluster.Gateway, nodes []db.RaftNode) error {
 //
 // This function must be called by the cluster leader.
 func Leave[T any](gateway cluster.Gateway, name string, force bool, pending bool) (string, error) {
-	slog.Debug("Make node leave the cluster", "name", name)
+	logger.Log().Debug("Make node leave the cluster", "name", name)
 
 	// Check if the node can be deleted and track its address.
 	var address string
@@ -986,7 +986,7 @@ func Leave[T any](gateway cluster.Gateway, name string, force bool, pending bool
 	}
 
 	// Get the address of another database node,
-	slog.Info("Remove node from cowsql raft cluster", "id", info.ID, "address", info.Address)
+	logger.Log().Info("Remove node from cowsql raft cluster", "id", info.ID, "address", info.Address)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -999,7 +999,7 @@ func Leave[T any](gateway cluster.Gateway, name string, force bool, pending bool
 	defer func() {
 		err := cowsqlClient.Close()
 		if err != nil {
-			slog.Warn("Failed to close client")
+			logger.Log().Warn("Failed to close client")
 		}
 	}()
 
@@ -1099,7 +1099,7 @@ func newRolesChanges(gateway cluster.Gateway, nodes []db.RaftNode, unavailableMe
 
 // Purge removes a node entirely from the cluster database.
 func Purge[T any](gateway cluster.Gateway, name string, pending bool) error {
-	slog.Debug("Remove node from the database", "name", name)
+	logger.Log().Debug("Remove node from the database", "name", name)
 
 	return transaction.Do(context.TODO(), gateway.Cluster(), func(ctx context.Context) error {
 		tx := gateway.Cluster()

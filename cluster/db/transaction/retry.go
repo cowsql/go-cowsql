@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log/slog"
 	"math"
 	"math/rand/v2"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 	"github.com/cowsql/go-cowsql/cluster/internal/util/api"
 	"github.com/cowsql/go-cowsql/driver"
 )
@@ -42,7 +42,7 @@ func Retry(ctx context.Context, maxRetries int, f func(ctx context.Context) erro
 
 		// FIXME: Perform one retry attempt to cover issues connecting to the cowsql leader.
 		if i == 0 && i < maxRetries && errors.Is(err, context.DeadlineExceeded) {
-			slog.Debug("Database error, retrying", "attempt", i, "err", err)
+			logger.Log().Debug("Database error, retrying", "attempt", i, "err", err)
 			time.Sleep(jitterDeviation(0.8, 100*time.Millisecond))
 
 			continue
@@ -50,18 +50,18 @@ func Retry(ctx context.Context, maxRetries int, f func(ctx context.Context) erro
 
 		// Process actual errors.
 		if !IsRetriableError(err) {
-			slog.Debug("Database error", "err", err)
+			logger.Log().Debug("Database error", "err", err)
 
 			break
 		}
 
 		if i == maxRetries-1 {
-			slog.Warn("Database error, giving up", "attempt", i, "err", err)
+			logger.Log().Warn("Database error, giving up", "attempt", i, "err", err)
 
 			break
 		}
 
-		slog.Debug("Database error, retrying", "attempt", i, "err", err)
+		logger.Log().Debug("Database error, retrying", "attempt", i, "err", err)
 		time.Sleep(jitterDeviation(0.8, 100*time.Millisecond))
 	}
 

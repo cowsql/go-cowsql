@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -20,6 +19,7 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
 	"github.com/cowsql/go-cowsql/cluster/heartbeat"
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 	"github.com/cowsql/go-cowsql/cluster/internal/util/file"
 	"github.com/cowsql/go-cowsql/cluster/internal/util/revert"
 	"github.com/cowsql/go-cowsql/cluster/internal/util/tcp"
@@ -105,7 +105,7 @@ type heartbeatMember struct {
 // @bootstrap should only be true when turning a non-clustered server into
 // the first (and leader) member of a new cluster.
 func (g *gateway) init(bootstrap bool) error {
-	slog.Debug("Initializing database gateway")
+	logger.Log().Debug("Initializing database gateway")
 
 	g.stopCh = make(chan struct{})
 
@@ -171,7 +171,7 @@ func (g *gateway) init(bootstrap bool) error {
 		// when the raft node already has log entries, in which case a regular
 		// bootstrap fails, resulting in the node containing outdated configuration.
 		if bootstrap {
-			slog.Debug("Bootstrap database gateway", "id", info.ID, "address", info.Address)
+			logger.Log().Debug("Bootstrap database gateway", "id", info.ID, "address", info.Address)
 			cluster := []cowsql.NodeInfo{
 				{ID: info.ID, Address: info.Address},
 			}
@@ -330,7 +330,7 @@ func cowsqlNetworkDial(ctx context.Context, name string, addr string, g *gateway
 
 	reverter.Add(func() { _ = conn.Close() })
 
-	l := slog.With("name", name, "local", conn.LocalAddr(), "remote", conn.RemoteAddr())
+	l := logger.Log().With("name", name, "local", conn.LocalAddr(), "remote", conn.RemoteAddr())
 	l.Debug("Cowsql connected outbound")
 
 	remoteTCP, err := tcp.ExtractConn(conn)
@@ -387,7 +387,7 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 	if info != nil {
 		if hbData.Time.Add(5*time.Second).Before(now) || hbData.Time.Add(-5*time.Second).After(now) {
 			if !g.timeSkew {
-				slog.Warn("Time skew detected between leader and local", "leaderTime", hbData.Time, "localTime", now)
+				logger.Log().Warn("Time skew detected between leader and local", "leaderTime", hbData.Time, "localTime", now)
 
 				if g.Cluster() != nil {
 					warnings, ok := g.Cluster().(db.ClusterWarningHandler)
@@ -396,7 +396,7 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 							return warnings.EmitTimeSkewWarning(ctx, info.Name, fmt.Sprintf("leaderTime: %s, localTime: %s", hbData.Time, now))
 						})
 						if err != nil {
-							slog.Warn("Failed to create cluster time skew warning", "err", err)
+							logger.Log().Warn("Failed to create cluster time skew warning", "err", err)
 						}
 					}
 				}
@@ -404,7 +404,7 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 
 			g.timeSkew = true
 		} else if g.timeSkew {
-			slog.Warn("Time skew resolved")
+			logger.Log().Warn("Time skew resolved")
 
 			if g.Cluster() != nil {
 				warnings, ok := g.Cluster().(db.ClusterWarningHandler)
@@ -413,7 +413,7 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 						return warnings.ResolveTimeSkewWarning(ctx, info.Name)
 					})
 					if err != nil {
-						slog.Warn("Failed to resolve cluster time skew warning", "err", err)
+						logger.Log().Warn("Failed to resolve cluster time skew warning", "err", err)
 					}
 				}
 			}
@@ -438,20 +438,20 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 
 	// Check we have been sent at least 1 raft node before wiping our set.
 	if len(raftNodes) == 0 {
-		slog.Error("Empty raft member set received")
+		logger.Log().Error("Empty raft member set received")
 		http.Error(w, "400 Empty raft member set received", http.StatusBadRequest)
 
 		return
 	}
 
 	// Accept raft node list from any heartbeat type so that we get freshest data quickly.
-	slog.Debug("Replace current raft nodes", "raft_members", raftNodes)
+	logger.Log().Debug("Replace current raft nodes", "raft_members", raftNodes)
 
 	err = transaction.Do(context.TODO(), g.Node(), func(ctx context.Context) error {
 		return g.Node().ReplaceRaftNodes(ctx, raftNodes)
 	})
 	if err != nil {
-		slog.Error("Error updating raft members", "err", err)
+		logger.Log().Error("Error updating raft members", "err", err)
 		http.Error(w, "500 failed to update raft nodes", http.StatusInternalServerError)
 
 		return
@@ -467,17 +467,33 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 		// at the end of the heartbeat so no need to do it here.
 		if (!isLeader || !g.HeartbeatRestart()) && g.heartbeatNodeHook != nil {
 			// Run heartbeat refresh task async so heartbeat response is sent to leader straight away.
+			if g.hasMemberStateChanged(hbData.Members) {
+				logger.Log().Info("Cluster member states changed, updating authentication")
+
+				err := g.State().UpdateAuthenticator(context.TODO())
+				if err != nil {
+					logger.Log().Error("Failed to update authenticator", "err", err)
+
+					return
+				}
+
+				g.lastNodeList = make(map[int64]heartbeatMember, len(hbData.Members))
+				for id, member := range hbData.Members {
+					g.lastNodeList[id] = heartbeatMember{Address: member.Address, Online: member.Online}
+				}
+			}
+
 			go g.heartbeatNodeHook(hbData, isLeader, nil)
 		}
 	} else {
 		if isLeader {
-			slog.Error("Partial heartbeat should not be sent to leader")
+			logger.Log().Error("Partial heartbeat should not be sent to leader")
 			http.Error(w, "400 Partial heartbeat should not be sent to leader", http.StatusBadRequest)
 
 			return
 		}
 
-		slog.Debug("Partial heartbeat received")
+		logger.Log().Debug("Partial heartbeat received")
 	}
 }
 

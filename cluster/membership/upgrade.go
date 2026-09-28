@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/cowsql/go-cowsql/client"
 	"github.com/cowsql/go-cowsql/cluster"
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 )
 
 // MaybeUpdate Check this node's version and possibly run the executable returned by PreUpdateCheck.
@@ -48,7 +48,7 @@ func MaybeUpdate(g cluster.Gateway) error {
 	}
 
 	if !shouldUpdate {
-		slog.Debug("Cluster node is up-to-date")
+		logger.Log().Debug("Cluster node is up-to-date")
 
 		return nil
 	}
@@ -58,7 +58,7 @@ func MaybeUpdate(g cluster.Gateway) error {
 
 // TriggerUpdate triggers the gateway's PreUpdateCheckFunc function, if set.
 func TriggerUpdate(g cluster.Gateway) error {
-	slog.Warn("Member is out-of-date with respect to other cluster members")
+	logger.Log().Warn("Member is out-of-date with respect to other cluster members")
 
 	updateFunc, err := g.Options().PreUpdateCheckFunc()()
 	if err != nil {
@@ -66,7 +66,7 @@ func TriggerUpdate(g cluster.Gateway) error {
 	}
 
 	if updateFunc == nil {
-		slog.Debug("No update check enabled, skipping auto-update")
+		logger.Log().Debug("No update check enabled, skipping auto-update")
 
 		return nil
 	}
@@ -100,7 +100,7 @@ func UpgradeMembersWithoutRole(gateway cluster.Gateway, members []db.NodeInfo) e
 	defer func() {
 		err := cowsqlClient.Close()
 		if err != nil {
-			slog.Warn("Failed to close client", "err", err)
+			logger.Log().Warn("Failed to close client", "err", err)
 		}
 	}()
 
@@ -137,7 +137,7 @@ func UpgradeMembersWithoutRole(gateway cluster.Gateway, members []db.NodeInfo) e
 			// This can't really happen (but has in the past) since there are always at least as many
 			// members as there are nodes, and all of them have different IDs.
 			if id == uint64(member.ID) { //nolint:gosec
-				slog.Error("No available raft ID for cluster member", "memberID", member.ID, "members", members, "raftMembers", nodes)
+				logger.Log().Error("No available raft ID for cluster member", "memberID", member.ID, "members", members, "raftMembers", nodes)
 
 				return fmt.Errorf("No available raft ID for cluster member ID %d", member.ID)
 			}
@@ -151,7 +151,7 @@ func UpgradeMembersWithoutRole(gateway cluster.Gateway, members []db.NodeInfo) e
 			Role:    db.RaftSpare,
 		}
 
-		slog.Info("Add spare cowsql node", "id", info.ID, "address", info.Address)
+		logger.Log().Info("Add spare cowsql node", "id", info.ID, "address", info.Address)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		err = cowsqlClient.Add(ctx, client.NodeInfo{ID: info.ID, Address: info.Address, Role: info.Role})

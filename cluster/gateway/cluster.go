@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -22,6 +21,7 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
 	"github.com/cowsql/go-cowsql/cluster/heartbeat"
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 	"github.com/cowsql/go-cowsql/cluster/internal/response"
 	"github.com/cowsql/go-cowsql/cluster/logging"
 	"github.com/cowsql/go-cowsql/cluster/membership"
@@ -53,6 +53,8 @@ func NewGateway(shutdownCtx context.Context, db db.Node, networkCert tls.CertInf
 		store:       &cowsqlNodeStore{},
 		state:       state,
 	}
+
+	logger.SetLogger(g.options.Logger())
 
 	err := g.init(false)
 	if err != nil {
@@ -221,7 +223,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 		// Handle heartbeats (these normally come from leader, but can come from joining nodes too).
 		if r.Method == http.MethodPut {
 			if g.shutdownCtx.Err() != nil {
-				slog.Warn("Rejecting heartbeat request as shutting down")
+				logger.Log().Warn("Rejecting heartbeat request as shutting down")
 				http.Error(w, "503 Shutting down", http.StatusServiceUnavailable)
 
 				return
@@ -231,7 +233,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 
 			err := json.NewDecoder(r.Body).Decode(&heartbeatData)
 			if err != nil {
-				slog.Error("Failed decoding heartbeat", "err", err)
+				logger.Log().Error("Failed decoding heartbeat", "err", err)
 				http.Error(w, "400 Failed decoding heartbeat", http.StatusBadRequest)
 
 				return
@@ -242,7 +244,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 			g.lock.RUnlock()
 
 			if err != nil {
-				slog.Error("Failed checking if leader", "err", err)
+				logger.Log().Error("Failed checking if leader", "err", err)
 				http.Error(w, "500 Failed checking if leader", http.StatusInternalServerError)
 
 				return
@@ -303,7 +305,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 			defer func() {
 				err := cowsqlClient.Close()
 				if err != nil {
-					slog.Warn("Failed to close client", "err", err)
+					logger.Log().Warn("Failed to close client", "err", err)
 				}
 			}()
 
@@ -335,7 +337,7 @@ func (g *gateway) HandlerFuncs(auth func(w http.ResponseWriter, r *http.Request)
 				return
 			}
 
-			_ = writeJSON(w, map[string]string{"leader": leader}, nil)
+			_ = writeJSON(w, map[string]string{"leader": leader})
 
 			return
 		}
@@ -444,7 +446,7 @@ func (g *gateway) NodeStore() client.NodeStore {
 // connection with the dialer (typically for running some pre-shutdown
 // queries).
 func (g *gateway) Cancel() {
-	slog.Debug("Cancel ongoing or future gRPC connection attempts")
+	logger.Log().Debug("Cancel ongoing or future gRPC connection attempts")
 	g.cancel()
 }
 
@@ -458,7 +460,7 @@ func (g *gateway) TransferLeadership(ctx context.Context) error {
 	defer func() {
 		err := cowsqlClient.Close()
 		if err != nil {
-			slog.Warn("Failed to close client", "err", err)
+			logger.Log().Warn("Failed to close client", "err", err)
 		}
 	}()
 
@@ -517,7 +519,7 @@ func (g *gateway) DemoteOfflineNode(raftID uint64) error {
 
 // ShutdownServer this gateway, stopping the gRPC server and possibly the raft factory.
 func (g *gateway) ShutdownServer() error {
-	slog.Debug("Stop database gateway")
+	logger.Log().Debug("Stop database gateway")
 
 	var err error
 
@@ -569,7 +571,7 @@ func (g *gateway) Sync() {
 
 	cowsqlClient, err := g.RaftClient(context.TODO())
 	if err != nil {
-		slog.Warn("Failed to get client", "err", err)
+		logger.Log().Warn("Failed to get client", "err", err)
 
 		return
 	}
@@ -577,14 +579,14 @@ func (g *gateway) Sync() {
 	defer func() {
 		err := cowsqlClient.Close()
 		if err != nil {
-			slog.Warn("Failed to close client", "err", err)
+			logger.Log().Warn("Failed to close client", "err", err)
 		}
 	}()
 
 	files, err := cowsqlClient.Dump(context.Background(), "db.bin")
 	if err != nil {
 		// Just log a warning, since this is not fatal.
-		slog.Warn("Failed get database dump", "err", err)
+		logger.Log().Warn("Failed get database dump", "err", err)
 
 		return
 	}
@@ -595,7 +597,7 @@ func (g *gateway) Sync() {
 
 		err := os.WriteFile(path, file.Data, 0o600)
 		if err != nil {
-			slog.Warn("Failed to dump database file", "file", file.Name, "err", err)
+			logger.Log().Warn("Failed to dump database file", "file", file.Name, "err", err)
 		}
 	}
 }
@@ -806,7 +808,7 @@ func (g *gateway) LeaderAddress() (string, error) {
 		// more useful info.
 		leader, err := doReq(g.ctx, timeout, req)
 		if err != nil {
-			slog.Debug("Failed to fetch leader address", "address", address, "error", err)
+			logger.Log().Debug("Failed to fetch leader address", "address", address, "error", err)
 
 			continue
 		}
@@ -866,7 +868,7 @@ func (g *gateway) CurrentRaftNodes(ctx context.Context) ([]db.RaftNode, error) {
 	defer func() {
 		err := cowsqlClient.Close()
 		if err != nil {
-			slog.Warn("Failed to close client", "err", err)
+			logger.Log().Warn("Failed to close client", "err", err)
 		}
 	}()
 
@@ -907,7 +909,7 @@ func (g *gateway) CurrentRaftNodes(ctx context.Context) ([]db.RaftNode, error) {
 			for i, server := range servers {
 				member, found := membersByAddress[server.Address]
 				if !found {
-					slog.Warn("Cluster member info not found", "address", server.Address)
+					logger.Log().Warn("Cluster member info not found", "address", server.Address)
 				}
 
 				raftNodes[i].Name = member.Name
@@ -916,7 +918,7 @@ func (g *gateway) CurrentRaftNodes(ctx context.Context) ([]db.RaftNode, error) {
 			return nil
 		})
 		if err != nil {
-			slog.Warn("Failed getting raft nodes", "err", err)
+			logger.Log().Warn("Failed getting raft nodes", "err", err)
 		}
 	}
 
@@ -972,7 +974,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 			return
 		}
 
-		slog.Error("Failed to get current raft members", "err", err)
+		logger.Log().Error("Failed to get current raft members", "err", err)
 
 		return
 	}
@@ -992,7 +994,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		return err
 	})
 	if err != nil {
-		slog.Warn("Failed to get current cluster members", "err", err)
+		logger.Log().Warn("Failed to get current cluster members", "err", err)
 
 		return
 	}
@@ -1001,17 +1003,17 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 
 	if mode != heartbeat.HeartbeatNormal {
 		// Log unscheduled heartbeats with a higher level than normal heartbeats.
-		slog.Info("Starting instant heartbeat round", "mode", modeStr)
+		logger.Log().Info("Starting instant heartbeat round", "mode", modeStr)
 	} else {
 		// Don't spam the normal log with regular heartbeat messages.
-		slog.Debug("Starting heartbeat round", "mode", modeStr)
+		logger.Log().Debug("Starting heartbeat round", "mode", modeStr)
 	}
 
 	// Replace the local raft_nodes table immediately because it
 	// might miss a row containing ourselves, since we might have
 	// been elected leader before the former leader had chance to
 	// send us a fresh update through the heartbeat pool.
-	slog.Debug("Heartbeat updating local raft members", "members", raftNodes)
+	logger.Log().Debug("Heartbeat updating local raft members", "members", raftNodes)
 
 	err = transaction.Do(context.TODO(), g.Node(), func(ctx context.Context) error {
 		tx := g.Node()
@@ -1019,13 +1021,13 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		return tx.ReplaceRaftNodes(ctx, raftNodes)
 	})
 	if err != nil {
-		slog.Warn("Failed to replace local raft members", "err", err, "mode", modeStr)
+		logger.Log().Warn("Failed to replace local raft members", "err", err, "mode", modeStr)
 
 		return
 	}
 
 	if localClusterAddress == "" {
-		slog.Error("No local address set, aborting heartbeat round", "mode", modeStr)
+		logger.Log().Error("No local address set, aborting heartbeat round", "mode", modeStr)
 
 		return
 	}
@@ -1080,7 +1082,7 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 			return nil
 		})
 		if err != nil {
-			slog.Warn("Failed to get current cluster members", "err", err, "mode", modeStr)
+			logger.Log().Warn("Failed to get current cluster members", "err", err, "mode", modeStr)
 
 			return
 		}
@@ -1160,25 +1162,25 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		})
 	})
 	if err != nil {
-		slog.Error("Failed updating cluster heartbeats", "err", err)
+		logger.Log().Error("Failed updating cluster heartbeats", "err", err)
 
 		return
 	}
 
 	// If the context has been cancelled, return prematurely after saving the members we did manage to ping.
 	if ctxErr != nil {
-		slog.Warn("Aborting heartbeat round", "err", ctxErr, "mode", modeStr)
+		logger.Log().Warn("Aborting heartbeat round", "err", ctxErr, "mode", modeStr)
 
 		return
 	}
 
 	if hbState.FullStateList {
 		if g.hasMemberStateChanged(hbState.Members) {
-			slog.Info("Cluster member states changed, updating authentication")
+			logger.Log().Info("Cluster member states changed, updating authentication")
 
 			err := g.State().UpdateAuthenticator(context.TODO())
 			if err != nil {
-				slog.Error("Failed to update authenticator", "err", err)
+				logger.Log().Error("Failed to update authenticator", "err", err)
 
 				return
 			}
@@ -1197,15 +1199,15 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 
 	duration := time.Since(startTime)
 	if duration > heartbeatInterval {
-		slog.Warn("Cluster heartbeat took too long", "duration", duration, "interval", heartbeatInterval)
+		logger.Log().Warn("Cluster heartbeat took too long", "duration", duration, "interval", heartbeatInterval)
 	}
 
 	if mode != heartbeat.HeartbeatNormal {
 		// Log unscheduled heartbeats with a higher level than normal heartbeats.
-		slog.Info("Completed instant heartbeat round", "duration", duration)
+		logger.Log().Info("Completed instant heartbeat round", "duration", duration)
 	} else {
 		// Don't spam the normal log with regular heartbeat messages.
-		slog.Debug("Completed heartbeat round", "duration", duration)
+		logger.Log().Debug("Completed heartbeat round", "duration", duration)
 	}
 }
 
@@ -1223,7 +1225,7 @@ func (g *gateway) IsLeader(ctx context.Context) (bool, error) {
 	defer func() {
 		err := cowsqlClient.Close()
 		if err != nil {
-			slog.Warn("Failed to close client", "err", err)
+			logger.Log().Warn("Failed to close client", "err", err)
 		}
 	}()
 

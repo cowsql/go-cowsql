@@ -2,9 +2,9 @@ package logging
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/cowsql/go-cowsql/client"
+	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 )
 
 // CowsqlLog redirects cowsql's logs to our own logger.
@@ -14,8 +14,8 @@ func CowsqlLog(l client.LogLevel, format string, a ...any) {
 
 	switch l {
 	case client.LogDebug, client.LogInfo, client.LogWarn:
-		slog.Debug(format)
+		logger.Log().Debug(format)
 	case client.LogError:
-		slog.Error(format)
+		logger.Log().Error(format)
 	}
 }

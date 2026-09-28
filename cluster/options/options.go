@@ -1,14 +1,17 @@
 package options
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
 // Option to be passed to NewGateway to customize the resulting instance.
 type Option func(*Options)
 
-// LogLevel sets the logging level for messages emitted by cowsql and raft.
-func LogLevel(level string) Option {
+// Logger sets the logger for messages emitted by go-cowsql.
+func Logger(logger *slog.Logger) Option {
 	return func(options *Options) {
-		options.logLevel = level
+		options.logger = logger
 	}
 }
 
@@ -84,7 +87,7 @@ func PreUpdateCheck(f func() (func() error, error)) Option {
 func NewOptions() *Options {
 	return &Options{
 		latency:                 1.0,
-		logLevel:                "ERROR",
+		logger:                  slog.Default(),
 		databaseEndpoint:        "/internal/database",
 		defaultOfflineThreshold: 20 * time.Second,
 		maxDBRetries:            250,
@@ -98,8 +101,8 @@ func NewOptions() *Options {
 
 // Options represents the configurable options fields.
 type Options struct {
-	latency  float64
-	logLevel string
+	latency float64
+	logger  *slog.Logger
 
 	databaseEndpoint string
 
@@ -128,9 +131,9 @@ func (o *Options) Latency() float64 {
 	return o.latency
 }
 
-// LogLevel is the logging level for messages emitted by cowsql and raft.
-func (o *Options) LogLevel() string {
-	return o.logLevel
+// Logger returns the logger in use.
+func (o *Options) Logger() *slog.Logger {
+	return o.logger
 }
 
 // DatabaseEndpoint is the path component to use with the cluster address for intra-cluster communication.

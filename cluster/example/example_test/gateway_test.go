@@ -212,7 +212,6 @@ func newGateway(t *testing.T, node db.Node, networkCert cowsqltls.CertInfo, s st
 
 	allOpts := []options.Option{
 		options.Latency(0.2),
-		options.LogLevel("TRACE"),
 	}
 
 	allOpts = append(allOpts, opts...)
