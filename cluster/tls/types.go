@@ -22,6 +22,7 @@ type CertInfo interface {
 	CA() *x509.Certificate
 	CRL() *x509.RevocationList
 	PublicKey() []byte
+	PublicKeyChain() []byte
 	PublicKeyX509() (*x509.Certificate, error)
 	PrivateKey() []byte
 	Fingerprint() string
@@ -57,6 +58,17 @@ func (c *certInfo) PublicKey() []byte {
 	data := c.KeyPair().Certificate[0]
 
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: data})
+}
+
+// PublicKeyChain is a convenience to encode the full certificate chain to ASCII.
+func (c *certInfo) PublicKeyChain() []byte {
+	var chain []byte
+
+	for _, cert := range c.KeyPair().Certificate {
+		chain = append(chain, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert})...)
+	}
+
+	return chain
 }
 
 // PublicKeyX509 is a convenience to return the underlying public key as an *x509.Certificate.
