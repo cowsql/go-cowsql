@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/cowsql/go-cowsql/cluster/db"
 	"github.com/cowsql/go-cowsql/cluster/db/transaction"
@@ -62,16 +63,14 @@ func (n *Node) EnterExclusive() error {
 // This is called on the initial call to transaction.Do against the provided function body.
 // Perform any pre-transaction setup here, or wrap the transaction body itself.
 // Returns the transaction body and a cleanup function to return on committing / aborting the transaction.
-func (n *Node) OnTxStart(exclusive bool, f func(ctx context.Context) error) (func(ctx context.Context) error, func()) {
-	return f, func() {}
+func (n *Node) OnTxStart(exclusive bool) func() {
+	return func() {}
 }
 
-// OnTxStartForce implements [transaction.Transactor].
-// This is called on the initial call to transaction.ForceTx against the provided function body.
-// Perform any pre-transaction setup here, or wrap the transaction body itself.
-// Returns the transaction body and a cleanup function to return on committing / aborting the transaction.
-func (n *Node) OnTxStartForce(exclusive bool, f func(ctx context.Context, tx transaction.TX) error) (func(ctx context.Context, tx transaction.TX) error, func()) {
-	return f, func() {}
+// TxTimeout implements [transaction.Transactor].
+// Ensures each transaction body from BeginTx to Commit/Rollback will have 30s to complete, on each retry.
+func (n *Node) TxTimeout() time.Duration {
+	return 30 * time.Second
 }
 
 // DB implements [db.Node].
