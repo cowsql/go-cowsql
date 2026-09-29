@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/cowsql/go-cowsql/cluster/internal/logger"
 )
@@ -26,13 +27,12 @@ type Transactor interface {
 	// MaxRetries returns the number of times a busy / failed transaction will be rolled back and retried before giving up.
 	MaxRetries() int
 
-	// OnTxStart performs initial setup preparing for the transaction.
-	// Returns an updated transaction body, and a cleanup func.
+	// OnTxStart performs initial setup preparing for the transaction, and returns a func that will be called on commit/rollback.
 	// If exclusive is true, then this transaction is blocking all others. This state should be cleared in the cleanup func.
-	OnTxStart(exclusive bool, f func(ctx context.Context) error) (func(ctx context.Context) error, func())
+	OnTxStart(exclusive bool) func()
 
-	// OnTxStartForce is similar to OnTxStart but the transaction body contains an explicitly opened transaction.
-	OnTxStartForce(exclusive bool, f func(ctx context.Context, tx TX) error) (func(ctx context.Context, tx TX) error, func())
+	// TxTimeout sets the transaction timeout before invoking BeginTx or the function body, on each retry.
+	TxTimeout() time.Duration
 
 	// EnterExclusive should block the opening of any transactions after called.
 	// The Transactor's OnTxStart should handle clearing this state in its returned cleanup func.
@@ -76,42 +76,37 @@ func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(co
 		return errors.New("Transactor has not been initialized")
 	}
 
+	maxRetries := t.MaxRetries()
+	timeout := t.TxTimeout()
+
 	ctx, trans := Begin(ctx)
 	_, nestedTx := trans.(*noopTransactionContainer)
 
-	doFunc := f
-
 	if !nestedTx {
-		if force {
-			var cleanup func()
-
-			doFunc, cleanup = t.OnTxStartForce(exclusive, func(ctx context.Context, tx TX) error {
-				return f(ctx, tx)
-			})
-
+		cleanup := t.OnTxStart(exclusive)
+		if cleanup != nil {
 			defer cleanup()
-		} else {
-			// The transaction won't be opened until later so just pass nil.
-			wrappedFunc, cleanup := t.OnTxStart(exclusive, func(ctx context.Context) error {
-				return f(ctx, nil)
-			})
+		}
 
-			doFunc = func(ctx context.Context, _ TX) error {
-				return wrappedFunc(ctx)
-			}
+		// If this is a real transaction, but not using retries, acquire the retry context just once and override the body context.
+		if maxRetries == 0 && timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
 
-			defer cleanup()
+			defer cancel()
 		}
 	}
 
-	defer func() {
-		rollbackErr := trans.Rollback()
-		if rollbackErr != nil {
-			err = fmt.Errorf("Transaction rollback failed: %w, reason: %w", rollbackErr, err)
-		}
-	}()
+	shouldRetry := !nestedTx && maxRetries > 0
 
-	maxRetries := t.MaxRetries()
+	if !shouldRetry {
+		defer func() {
+			rollbackErr := trans.Rollback()
+			if rollbackErr != nil {
+				err = fmt.Errorf("Transaction rollback failed: %w, reason: %w", rollbackErr, err)
+			}
+		}()
+	}
 
 	// Only assign tx if force is true, else it will be implicitly created inside doFunc.
 	forceTx := func(ctx context.Context) (TX, error) {
@@ -132,19 +127,31 @@ func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(co
 		return tx, nil
 	}
 
-	if !nestedTx && maxRetries > 0 {
+	if shouldRetry {
 		err = Retry(ctx, maxRetries, func(ctx context.Context) error {
+			if timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, timeout)
+
+				defer cancel()
+			}
+
 			tx, err := forceTx(ctx)
 			if err != nil {
+				_ = trans.Rollback()
 				return err
 			}
 
-			reason := doFunc(ctx, tx)
+			reason := f(ctx, tx)
 			if reason != nil {
 				err := Retry(context.Background(), maxRetries, func(_ context.Context) error { return trans.Rollback() })
 				if err != nil {
 					logger.Log().Warn("Failed to rollback transaction after error", "reason", reason, "err", err)
 				}
+			}
+
+			if reason == nil {
+				return trans.Commit()
 			}
 
 			return reason
@@ -157,16 +164,18 @@ func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(co
 			return err
 		}
 
-		err = doFunc(ctx, tx)
+		err = f(ctx, tx)
 	}
 
 	if err != nil {
 		return err
 	}
 
-	err = trans.Commit()
-	if err != nil {
-		return fmt.Errorf("Failed commit transaction: %w", err)
+	if !shouldRetry {
+		err = trans.Commit()
+		if err != nil {
+			return fmt.Errorf("Failed commit transaction: %w", err)
+		}
 	}
 
 	return nil

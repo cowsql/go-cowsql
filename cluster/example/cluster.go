@@ -75,19 +75,12 @@ func (c *Cluster) EnterExclusive() error {
 }
 
 // OnTxStart implements [transaction.Transactor].
-// This is called on the initial call to transaction.Do against the provided function body.
+// This is called on the initial call to transaction.Do.
 //
 // - Acquire read lock to mark non-exclusive access.
-// - Transaction callback: set a 30s timeout on the outer transaction body, just to ensure no connection issues cause a lock-up.
-// - On transaction commit/cancel, release the exclusivity lock and cancel the transaction context.
-func (c *Cluster) OnTxStart(exclusive bool, f func(ctx context.Context) error) (func(ctx context.Context) error, func()) {
-	var cancel context.CancelFunc
-
+// - On transaction commit/cancel, release the exclusivity lock.
+func (c *Cluster) OnTxStart(exclusive bool) func() {
 	cleanup := func() {
-		if cancel != nil {
-			cancel()
-		}
-
 		if exclusive {
 			c.Unlock()
 		} else {
@@ -99,47 +92,13 @@ func (c *Cluster) OnTxStart(exclusive bool, f func(ctx context.Context) error) (
 		c.RLock()
 	}
 
-	return func(ctx context.Context) error {
-		var timeoutCtx context.Context
-
-		timeoutCtx, cancel = context.WithTimeout(ctx, time.Second*30) //nolint:gosec
-
-		return f(timeoutCtx)
-	}, cleanup
+	return cleanup
 }
 
-// OnTxStartForce implements [transaction.Transactor].
-// This is called on the initial call to transaction.ForceTx against the provided function body.
-//
-// - Acquire read lock to mark non-exclusive access.
-// - Transaction callback: set a 30s timeout on the outer transaction body, just to ensure no connection issues cause a lock-up.
-// - On transaction commit/cancel, release the exclusivity lock and cancel the transaction context.
-func (c *Cluster) OnTxStartForce(exclusive bool, f func(ctx context.Context, tx transaction.TX) error) (func(ctx context.Context, tx transaction.TX) error, func()) {
-	var cancel context.CancelFunc
-
-	cleanup := func() {
-		if cancel != nil {
-			cancel()
-		}
-
-		if exclusive {
-			c.Unlock()
-		} else {
-			c.RUnlock()
-		}
-	}
-
-	if !exclusive {
-		c.RLock()
-	}
-
-	return func(ctx context.Context, tx transaction.TX) error {
-		var timeoutCtx context.Context
-
-		timeoutCtx, cancel = context.WithTimeout(ctx, time.Second*30) //nolint:gosec
-
-		return f(timeoutCtx, tx)
-	}, cleanup
+// TxTimeout implements [transaction.Transactor].
+// Ensures each transaction body from BeginTx to Commit/Rollback will have 30s to complete, on each retry.
+func (c *Cluster) TxTimeout() time.Duration {
+	return time.Second * 30
 }
 
 // DB implements [db.Cluster].
