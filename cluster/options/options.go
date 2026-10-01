@@ -15,18 +15,6 @@ func Logger(logger *slog.Logger) Option {
 	}
 }
 
-// Latency is a coarse grain measure of how fast/reliable network links
-// are. This is used to tweak the various timeouts parameters of the raft
-// algorithm. See the raft.Config structure for more details. A value of 1.0
-// means use the default values from hashicorp's raft package. Values closer to
-// 0 reduce the values of the various timeouts (useful when running unit tests
-// in-memory).
-func Latency(latency float64) Option {
-	return func(options *Options) {
-		options.latency = latency
-	}
-}
-
 // DatabaseEndpoint is the path component to use with the cluster address for intra-cluster communication.
 func DatabaseEndpoint(e string) Option {
 	return func(options *Options) {
@@ -86,7 +74,6 @@ func PreUpdateCheck(f func() (func() error, error)) Option {
 // NewOptions creates an options instance with default values.
 func NewOptions() *Options {
 	return &Options{
-		latency:                 1.0,
 		logger:                  slog.Default(),
 		databaseEndpoint:        "/internal/database",
 		defaultOfflineThreshold: 20 * time.Second,
@@ -101,8 +88,7 @@ func NewOptions() *Options {
 
 // Options represents the configurable options fields.
 type Options struct {
-	latency float64
-	logger  *slog.Logger
+	logger *slog.Logger
 
 	databaseEndpoint string
 
@@ -119,16 +105,6 @@ type Options struct {
 	maxStandby func() int64
 
 	preUpdateCheck func() (func() error, error)
-}
-
-// Latency is a coarse grain measure of how fast/reliable network links
-// are. This is used to tweak the various timeouts parameters of the raft
-// algorithm. See the raft.Config structure for more details. A value of 1.0
-// means use the default values from hashicorp's raft package. Values closer to
-// 0 reduce the values of the various timeouts (useful when running unit tests
-// in-memory).
-func (o *Options) Latency() float64 {
-	return o.latency
 }
 
 // Logger returns the logger in use.

@@ -210,9 +210,7 @@ func newGateway(t *testing.T, node db.Node, networkCert cowsqltls.CertInfo, s st
 	t.Helper()
 	require.NoError(t, os.Mkdir(node.GlobalDatabaseDir(), 0o755))
 
-	allOpts := []options.Option{
-		options.Latency(0.2),
-	}
+	allOpts := []options.Option{}
 
 	allOpts = append(allOpts, opts...)
 
