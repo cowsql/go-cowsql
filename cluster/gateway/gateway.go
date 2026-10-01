@@ -467,23 +467,7 @@ func (g *gateway) heartbeatHandler(w http.ResponseWriter, _ *http.Request, isLea
 		// at the end of the heartbeat so no need to do it here.
 		if (!isLeader || !g.HeartbeatRestart()) && g.heartbeatNodeHook != nil {
 			// Run heartbeat refresh task async so heartbeat response is sent to leader straight away.
-			if g.hasMemberStateChanged(hbData.Members) {
-				logger.Log().Info("Cluster member states changed, updating authentication")
-
-				err := g.State().UpdateAuthenticator(context.TODO())
-				if err != nil {
-					logger.Log().Error("Failed to update authenticator", "err", err)
-
-					return
-				}
-
-				g.lastNodeList = make(map[int64]heartbeatMember, len(hbData.Members))
-				for id, member := range hbData.Members {
-					g.lastNodeList[id] = heartbeatMember{Address: member.Address, Online: member.Online}
-				}
-			}
-
-			go g.heartbeatNodeHook(hbData, isLeader, nil)
+			go g.runHeartbeatHook(hbData, isLeader, nil)
 		}
 	} else {
 		if isLeader {
@@ -543,4 +527,29 @@ func (g *gateway) hasMemberStateChanged(heartbeat map[int64]db.HeartbeatMember) 
 	}
 
 	return false
+}
+
+func (g *gateway) runHeartbeatHook(hbData *heartbeat.APIHeartbeat, isLeader bool, unavailableMembers []string) {
+	if hbData.FullStateList && g.hasMemberStateChanged(hbData.Members) {
+		logger.Log().Info("Cluster member states changed, updating authentication")
+
+		err := g.State().UpdateAuthenticator(context.TODO())
+		if err != nil {
+			logger.Log().Error("Failed to update authenticator", "err", err)
+
+			return
+		}
+
+		g.lock.Lock()
+		g.lastNodeList = make(map[int64]heartbeatMember, len(hbData.Members))
+		for id, member := range hbData.Members {
+			g.lastNodeList[id] = heartbeatMember{Address: member.Address, Online: member.Online}
+		}
+
+		g.lock.Unlock()
+	}
+
+	if g.heartbeatNodeHook != nil {
+		g.heartbeatNodeHook(hbData, isLeader, unavailableMembers)
+	}
 }
