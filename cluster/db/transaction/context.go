@@ -151,7 +151,15 @@ func do(ctx context.Context, t Transactor, exclusive bool, force bool, f func(co
 			}
 
 			if reason == nil {
-				return trans.Commit()
+				err := trans.Commit()
+				if err != nil {
+					// Trigger a rollback to unset the tx from the context.
+					_ = trans.Rollback()
+
+					return err
+				}
+
+				return nil
 			}
 
 			return reason

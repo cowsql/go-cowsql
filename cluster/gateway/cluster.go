@@ -1174,28 +1174,8 @@ func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
 		return
 	}
 
-	if hbState.FullStateList {
-		if g.hasMemberStateChanged(hbState.Members) {
-			logger.Log().Info("Cluster member states changed, updating authentication")
-
-			err := g.State().UpdateAuthenticator(context.TODO())
-			if err != nil {
-				logger.Log().Error("Failed to update authenticator", "err", err)
-
-				return
-			}
-
-			g.lastNodeList = make(map[int64]heartbeatMember, len(hbState.Members))
-			for id, member := range hbState.Members {
-				g.lastNodeList[id] = heartbeatMember{Address: member.Address, Online: member.Online}
-			}
-		}
-	}
-
 	// If full node state was sent and node refresh task is specified.
-	if g.heartbeatNodeHook != nil {
-		g.heartbeatNodeHook(hbState, true, unavailableMembers)
-	}
+	g.runHeartbeatHook(hbState, true, unavailableMembers)
 
 	duration := time.Since(startTime)
 	if duration > heartbeatInterval {
