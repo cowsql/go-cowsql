@@ -92,7 +92,8 @@ type gateway struct {
 	// State function.
 	state state.State
 
-	lastNodeList map[int64]heartbeatMember
+	lastNodeListMu sync.RWMutex
+	lastNodeList   map[int64]heartbeatMember
 }
 
 type heartbeatMember struct {
@@ -505,6 +506,8 @@ func (g *gateway) triggerUpdateOnce() {
 
 // hasMemberStateChanged returns true if the number of members, their addresses or state has changed.
 func (g *gateway) hasMemberStateChanged(heartbeat map[int64]db.HeartbeatMember) bool {
+	g.lastNodeListMu.RLock()
+	defer g.lastNodeListMu.RUnlock()
 	// No previous heartbeat data.
 	if g.lastNodeList == nil {
 		return true
@@ -540,13 +543,13 @@ func (g *gateway) runHeartbeatHook(hbData *heartbeat.APIHeartbeat, isLeader bool
 			return
 		}
 
-		g.lock.Lock()
+		g.lastNodeListMu.Lock()
 		g.lastNodeList = make(map[int64]heartbeatMember, len(hbData.Members))
 		for id, member := range hbData.Members {
 			g.lastNodeList[id] = heartbeatMember{Address: member.Address, Online: member.Online}
 		}
 
-		g.lock.Unlock()
+		g.lastNodeListMu.Unlock()
 	}
 
 	if g.heartbeatNodeHook != nil {
