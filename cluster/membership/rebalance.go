@@ -61,13 +61,18 @@ func RebalanceMembersHook(ctx context.Context, gateway cluster.Gateway, localClu
 		// If there are offline members that have voter or stand-by database roles, let's see if we can
 		// replace them with spare ones. Also, if we don't have enough voters or standbys, let's see if we
 		// can upgrade some member.
+		// Track whether any role changed so we can propagate the new state immediately.
+		changed := false
+
 		if isDegraded || onlineVoters != int(maxVoters) || onlineStandbys != int(maxStandBy) || hasMustDemoteRoles {
 			logger.Log().Debug("Rebalancing member roles in heartbeat", slog.String("local_address", localClusterAddress))
 
-			err := rebalanceMemberRoles(ctx, gateway, unavailableMembers, alwaysDemoteRoles, changeMemberRoleFunc)
+			roleChanged, err := rebalanceMemberRoles(ctx, gateway, unavailableMembers, alwaysDemoteRoles, changeMemberRoleFunc)
 			if err != nil && !errors.Is(err, ErrNotLeader) {
 				logger.Log().Warn("Could not rebalance cluster member roles", slog.Any("err", err), slog.String("local_address", localClusterAddress))
 			}
+
+			changed = changed || roleChanged
 		}
 
 		if hasNodesNotPartOfRaft {
@@ -76,28 +81,40 @@ func RebalanceMembersHook(ctx context.Context, gateway cluster.Gateway, localClu
 			err := upgradeNodesWithoutRaftRole(ctx, gateway, gateway.Cluster())
 			if err != nil && !errors.Is(err, ErrNotLeader) {
 				logger.Log().Warn("Failed upgrading raft roles:", slog.Any("err", err), slog.String("local_address", localClusterAddress))
+			} else if err == nil {
+				changed = true
 			}
+		}
+
+		// A normal heartbeat round spreads member updates over the heartbeat interval, so a role
+		// change applied here would otherwise only reach the other members on the next round. Kick
+		// an immediate round so the new roles and the current leader propagate without that delay.
+		if changed {
+			go gateway.Heartbeat(gateway.Context(), heartbeat.HeartbeatImmediate)
 		}
 	}
 }
 
 // Check if there's a cowsql node whose role should be changed, and post a
 // change role request if so.
-func rebalanceMemberRoles(ctx context.Context, gateway cluster.Gateway, unavailableMembers []string, exceptRoles []string, changeMemberRoleFunc ChangeMemberRoleFunc) error {
+// It returns whether it changed any member's role.
+func rebalanceMemberRoles(ctx context.Context, gateway cluster.Gateway, unavailableMembers []string, exceptRoles []string, changeMemberRoleFunc ChangeMemberRoleFunc) (bool, error) {
+	changed := false
+
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return changed, ctx.Err()
 	}
 
 again:
 	address, nodes, err := Rebalance(gateway, unavailableMembers, exceptRoles)
 
 	if err != nil {
-		return err
+		return changed, err
 	}
 
 	if address == "" {
 		// Nothing to do.
-		return nil
+		return changed, nil
 	}
 
 	// Process demotions of offline nodes immediately.
@@ -112,7 +129,7 @@ again:
 		if member.Role != db.RaftSpare {
 			if !reachable {
 				// The server isn't ready to be promoted yet, try again next time.
-				return nil
+				return changed, nil
 			}
 
 			log.Info("Promoting cluster member")
@@ -129,8 +146,10 @@ again:
 
 		err := gateway.DemoteOfflineNode(member.ID)
 		if err != nil {
-			return fmt.Errorf("Failed to demote cluster member %q: %w", member.Name, err)
+			return changed, fmt.Errorf("Failed to demote cluster member %q: %w", member.Name, err)
 		}
+
+		changed = true
 
 		goto again
 	}
@@ -138,8 +157,10 @@ again:
 	// Then handle the promotions.
 	err = changeMemberRoleFunc(ctx, address, nodes)
 	if err != nil {
-		return err
+		return changed, err
 	}
+
+	changed = true
 
 	goto again
 }
