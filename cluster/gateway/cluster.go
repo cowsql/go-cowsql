@@ -677,16 +677,20 @@ func (g *gateway) WaitLeadership() error {
 
 // LeaderAddress returns the address of the current raft leader.
 func (g *gateway) LeaderAddress() (string, error) {
+	// Only snapshot the gateway state under the lock, waiting for a leader can take seconds and would block every other user of the gateway.
 	g.lock.RLock()
-	defer g.lock.RUnlock()
+	notClustered := g.memoryDial != nil
+	isVoter := g.server != nil && g.info != nil && g.info.Role == db.RaftVoter
+	networkCert := g.networkCert
+	g.lock.RUnlock()
 
 	// If we aren't clustered, return an error.
-	if g.memoryDial != nil {
+	if notClustered {
 		return "", membership.ErrNodeIsNotClustered
 	}
 
 	// If this is a voter node, return the address of the current leader, or wait a bit until one is elected.
-	if g.server != nil && g.info != nil && g.info.Role == db.RaftVoter {
+	if isVoter {
 		ctx, cancel := context.WithTimeout(g.ctx, 5*time.Second)
 		defer cancel()
 
@@ -749,7 +753,7 @@ func (g *gateway) LeaderAddress() (string, error) {
 		return "", errors.New("No raft node known")
 	}
 
-	transport, cleanup, err := tls.Transport(g.networkCert, g.serverCert(), g.Options().RestrictTLS())
+	transport, cleanup, err := tls.Transport(networkCert, g.serverCert(), g.Options().RestrictTLS())
 	if err != nil {
 		return "", err
 	}
