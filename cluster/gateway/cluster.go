@@ -938,14 +938,15 @@ func (g *gateway) HeartbeatInterval() time.Duration {
 
 // Heartbeat triggers a heartbeat.
 func (g *gateway) Heartbeat(ctx context.Context, mode heartbeat.Mode) {
-	g.lock.Lock()
+	g.lock.RLock()
+
 	if g.cluster == nil || g.server == nil || g.memoryDial != nil {
-		g.lock.Unlock()
+		g.lock.RUnlock()
 		// We're not a raft node or we're not clustered
 		return
 	}
 
-	g.lock.Unlock()
+	g.lock.RUnlock()
 
 	// Avoid concurrent heartbeat loops.
 	// This is possible when both the regular task and the out of band heartbeat round from a cowsql
