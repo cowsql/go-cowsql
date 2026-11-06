@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/Rican7/retry"
@@ -17,6 +18,9 @@ import (
 
 	"github.com/cowsql/go-cowsql/logging"
 )
+
+// connectStagger is how long a server gets to respond before the next one is tried too.
+const connectStagger = 500 * time.Millisecond
 
 // DialFunc is a function that can be used to establish a network connection.
 type DialFunc func(context.Context, string) (net.Conn, error)
@@ -117,6 +121,11 @@ func (c *Connector) Connect(ctx context.Context) (*Protocol, error) {
 
 // Make a single attempt to establish a connection to the leader server trying
 // all addresses available in the store.
+//
+// Addresses are tried in order, moving on without giving up on an address that
+// is slow to respond. Once they've all been tried, those that responded are
+// polled for as long as others are pending, so that neither a dead server nor
+// an ongoing election delay reaching the leader by a full dial timeout.
 func (c *Connector) connectAttemptAll(ctx context.Context, log logging.Func) (*Protocol, error) {
 	servers, err := c.store.Get(ctx)
 	if err != nil {
@@ -128,78 +137,152 @@ func (c *Connector) connectAttemptAll(ctx context.Context, log logging.Func) (*P
 		return servers[i].Role < servers[j].Role
 	})
 
-	// Make an attempt for each address until we find the leader.
-	for _, server := range servers {
-		log := func(l logging.Level, format string, a ...any) {
-			format = fmt.Sprintf("server %s: ", server.Address) + format
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Attempts run concurrently and can outlive this function, so serialize their logging and stop it on return.
+	var logLock sync.Mutex
+
+	logDone := false
+
+	defer func() {
+		logLock.Lock()
+		defer logLock.Unlock()
+
+		logDone = true
+	}()
+
+	attemptLog := func(l logging.Level, format string, a ...any) {
+		logLock.Lock()
+		defer logLock.Unlock()
+
+		if !logDone {
 			log(l, format, a...)
 		}
+	}
 
-		ctx, cancel := context.WithTimeout(ctx, c.config.AttemptTimeout)
-		defer cancel() //nolint:revive
+	start := time.Now()
+	results := make(chan connectResult)
+	pending := map[string]bool{}
 
-		version := VersionOne
-
-		protocol, leader, err := c.connectAttemptOne(ctx, server.Address, version)
-		if errors.Is(err, errBadProtocol) {
-			log(logging.Warn, "unsupported protocol %d, attempt with legacy", version)
-			version = VersionLegacy
-			protocol, leader, err = c.connectAttemptOne(ctx, server.Address, version)
+	launch := func(address string) {
+		if pending[address] || ctx.Err() != nil || time.Since(start) >= c.config.AttemptTimeout {
+			return
 		}
 
-		if err != nil {
-			// This server is unavailable, try with the next target.
-			log(logging.Warn, err.Error())
+		pending[address] = true
 
-			continue
+		go func() {
+			results <- c.connectAttemptServer(ctx, address, attemptLog)
+		}()
+	}
+
+	next := 0
+
+	launchNext := func() {
+		if next < len(servers) {
+			launch(servers[next].Address)
+			next++
 		}
+	}
 
-		if protocol != nil {
-			// We found the leader
-			log(logging.Debug, "connected")
+	launchNext()
 
-			return protocol, nil
+	ticker := time.NewTicker(connectStagger)
+	defer ticker.Stop()
+
+	for len(pending) > 0 {
+		select {
+		case result := <-results:
+			delete(pending, result.address)
+
+			if result.protocol != nil {
+				// Discard the attempts that are still running.
+				go func(count int) {
+					for range count {
+						late := <-results
+						if late.protocol != nil {
+							_ = late.protocol.Close()
+						}
+					}
+				}(len(pending))
+
+				return result.protocol, nil
+			}
+
+			if result.leader != "" && !pending[result.leader] {
+				launch(result.leader)
+			} else {
+				launchNext()
+			}
+		case <-ticker.C:
+			if next < len(servers) {
+				launchNext()
+
+				continue
+			}
+
+			for _, server := range servers {
+				launch(server.Address)
+			}
 		}
-
-		if leader == "" {
-			// This server does not know who the current leader is,
-			// try with the next target.
-			log(logging.Warn, "no known leader")
-
-			continue
-		}
-
-		// If we get here, it means this server reported that another
-		// server is the leader, let's close the connection to this
-		// server and try with the suggested one.
-		log(logging.Debug, "connect to reported leader %s", leader)
-
-		ctx, cancel = context.WithTimeout(ctx, c.config.AttemptTimeout)
-		defer cancel() //nolint:revive
-
-		protocol, _, err = c.connectAttemptOne(ctx, leader, version)
-		if err != nil {
-			// The leader reported by the previous server is
-			// unavailable, try with the next target.
-			log(logging.Warn, "reported leader unavailable err=%v", err)
-
-			continue
-		}
-
-		if protocol == nil {
-			// The leader reported by the target server does not consider itself
-			// the leader, try with the next target.
-			log(logging.Warn, "reported leader server is not the leader")
-
-			continue
-		}
-
-		log(logging.Debug, "connected")
-
-		return protocol, nil
 	}
 
 	return nil, ErrNoAvailableLeader
+}
+
+// connectResult is the outcome of an attempt to connect to a server.
+type connectResult struct {
+	address  string    // Address of the server.
+	protocol *Protocol // Set if the server is the leader.
+	leader   string    // Set if the server reported another server as the leader.
+}
+
+// Make an attempt to connect to the given server.
+func (c *Connector) connectAttemptServer(ctx context.Context, address string, log logging.Func) connectResult {
+	serverLog := func(l logging.Level, format string, a ...any) {
+		format = fmt.Sprintf("server %s: ", address) + format
+		log(l, format, a...)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, c.config.AttemptTimeout)
+	defer cancel()
+
+	version := VersionOne
+
+	protocol, leader, err := c.connectAttemptOne(ctx, address, version)
+	if errors.Is(err, errBadProtocol) {
+		serverLog(logging.Warn, "unsupported protocol %d, attempt with legacy", version)
+		version = VersionLegacy
+		protocol, leader, err = c.connectAttemptOne(ctx, address, version)
+	}
+
+	if err != nil {
+		// This server is unavailable, try with the next target.
+		serverLog(logging.Warn, err.Error())
+
+		return connectResult{address: address}
+	}
+
+	if protocol != nil {
+		// We found the leader
+		serverLog(logging.Debug, "connected")
+
+		return connectResult{address: address, protocol: protocol}
+	}
+
+	if leader == "" {
+		// This server does not know who the current leader is,
+		// try with the next target.
+		serverLog(logging.Warn, "no known leader")
+
+		return connectResult{address: address}
+	}
+
+	// This server reported that another server is the leader.
+	serverLog(logging.Debug, "connect to reported leader %s", leader)
+
+	return connectResult{address: address, leader: leader}
 }
 
 // Handshake performs the initial handshake using the given protocol version.
