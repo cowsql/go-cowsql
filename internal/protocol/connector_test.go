@@ -132,6 +132,36 @@ func TestConnector_ContextCanceled(t *testing.T) {
 	})
 }
 
+// A server that doesn't respond doesn't delay reaching the leader.
+func TestConnector_UnresponsiveServer(t *testing.T) {
+	var lc net.ListenConfig
+
+	listener, err := lc.Listen(t.Context(), "unix", "@unresponsive")
+	requireNoError(t, err)
+
+	defer func() { _ = listener.Close() }()
+
+	address, cleanup := newNode(t, 0)
+	defer cleanup()
+
+	store := newStore(t, []string{listener.Addr().String(), address})
+
+	log, check := newLogFunc(t)
+	connector := protocol.NewConnector(0, store, protocol.Config{}, log)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	client, err := connector.Connect(ctx)
+	requireNoError(t, err)
+
+	assertNoError(t, client.Close())
+
+	check([]string{
+		"DEBUG: attempt 1: server @test-0: connected",
+	})
+}
+
 // Simulate a server which accepts the connection but doesn't reply within the
 // attempt timeout.
 func TestConnector_AttemptTimeout(t *testing.T) {

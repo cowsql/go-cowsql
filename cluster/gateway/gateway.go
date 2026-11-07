@@ -338,7 +338,7 @@ func cowsqlNetworkDial(ctx context.Context, name string, addr string, g *gateway
 	if err != nil {
 		l.Warn("Failed extracting TCP connection from remote connection", "err", err)
 	} else {
-		err := tcp.SetTimeouts(remoteTCP, time.Second*30)
+		err := tcp.SetTimeouts(remoteTCP, tcpTimeout)
 		if err != nil {
 			l.Warn("Failed setting TCP timeouts on remote connection", "err", err)
 		}

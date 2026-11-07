@@ -11,6 +11,9 @@ import (
 	"github.com/cowsql/go-cowsql/cluster/internal/util/tcp"
 )
 
+// tcpTimeout is how long a silent peer is tolerated, close to the raft election timeout.
+const tcpTimeout = 5 * time.Second
+
 type cowsqlProxyError struct {
 	first  error
 	second error
@@ -62,7 +65,7 @@ func cowsqlProxy(name string, stopCh chan struct{}, remote net.Conn, local net.C
 	if err != nil {
 		l.Warn("Failed extracting TCP connection from remote connection", "err", err)
 	} else {
-		err := tcp.SetTimeouts(remoteTCP, time.Second*30)
+		err := tcp.SetTimeouts(remoteTCP, tcpTimeout)
 		if err != nil {
 			l.Warn("Failed setting TCP timeouts on remote connection", "err", err)
 		}
